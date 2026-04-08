@@ -411,10 +411,7 @@ export default function Admin() {
                   {order.customerName}
                   {order.shortId && <span style={{ fontSize: '0.8rem', background: '#e5e7eb', padding: '0.1rem 0.4rem', borderRadius: '4px', color: '#4b5563', fontFamily: 'monospace' }}>#{order.shortId}</span>}
                 </h3>
-                <span style={{ fontSize: '0.85rem', color: '#666' }}>
-                  {!isCocinaView && order.customerPhone}
-                  {isCocinaView && <span style={{ opacity: 0.5 }}>Teléfono oculto</span>}
-                </span>
+                {!isCocinaView && <span style={{ fontSize: '0.85rem', color: '#666' }}>{order.customerPhone}</span>}
               </div>
               {getStatusBadge(order.status)}
             </div>
