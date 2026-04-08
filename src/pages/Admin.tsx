@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { collection, onSnapshot, query, orderBy, doc, getDocs, updateDoc, setDoc, deleteDoc, addDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
-import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity } from 'lucide-react'
+import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2 } from 'lucide-react'
 import { Scanner } from '@yudiel/react-qr-scanner'
 
 interface OrderItem {
@@ -41,6 +41,7 @@ export default function Admin() {
   
   const [showSettings, setShowSettings] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   const [newPassword, setNewPassword] = useState('')
   const [newCocinaPassword, setNewCocinaPassword] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -277,10 +278,13 @@ export default function Admin() {
         <div style={{ display: 'flex', gap: '1rem' }}>
           {role === 'admin' && (
             <>
-              <button type="button" onClick={() => { setShowActivity(!showActivity); setShowSettings(false) }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }} title="Historial">
+              <button type="button" onClick={() => { setShowStats(!showStats); setShowActivity(false); setShowSettings(false) }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }} title="Estadísticas Diarias">
+                <BarChart2 size={20} />
+              </button>
+              <button type="button" onClick={() => { setShowActivity(!showActivity); setShowSettings(false); setShowStats(false) }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }} title="Historial">
                 <Activity size={20} />
               </button>
-              <button type="button" onClick={() => { setShowSettings(!showSettings); setShowActivity(false) }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }} title="Ajustes">
+              <button type="button" onClick={() => { setShowSettings(!showSettings); setShowActivity(false); setShowStats(false) }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }} title="Ajustes">
                 <Settings size={20} />
               </button>
             </>
@@ -322,6 +326,38 @@ export default function Admin() {
             ))}
             {logs.length === 0 && <span style={{ color: '#888' }}>No hay registros.</span>}
           </div>
+        </div>
+      )}
+
+      {showStats && role === 'admin' && (
+        <div style={{ background: 'var(--surface)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><BarChart2 size={18}/> Estadísticas Diarias</h3>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+            {Object.values(
+              orders.reduce((acc: any, order) => {
+                 const dateObj = order.createdAt?.toDate ? order.createdAt.toDate() : new Date();
+                 const dateKey = dateObj.toLocaleDateString();
+                 if (!acc[dateKey]) acc[dateKey] = { date: dateKey, totalEarnings: 0, itemsCooked: 0 };
+                 
+                 // Solo sumar ganancias si la orden ya fue cobrada
+                 if (order.isPaid) acc[dateKey].totalEarnings += order.total;
+                 
+                 // Sumar todos los items (muffins y pays) procesados en el día
+                 order.items.forEach(item => {
+                   acc[dateKey].itemsCooked += item.quantity;
+                 });
+                 return acc;
+              }, {})
+            ).map((stat: any) => (
+              <div key={stat.date} style={{ padding: '1rem', background: 'var(--bg)', borderRadius: '8px', border: '1px solid #eee', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem', borderBottom: '1px solid #ddd', paddingBottom: '0.25rem' }}>{stat.date}</div>
+                <div style={{ fontSize: '0.9rem', color: '#666' }}>Ventas (Pagadas): <strong style={{ color: 'var(--primary)', fontSize: '1rem' }}>${stat.totalEarnings}</strong></div>
+                <div style={{ fontSize: '0.9rem', color: '#666' }}>Productos hechos: <strong style={{ color: '#333' }}>{stat.itemsCooked}</strong></div>
+              </div>
+            ))}
+          </div>
+          {orders.length === 0 && <span style={{ color: '#888' }}>No hay información para generar estadísticas.</span>}
         </div>
       )}
 
