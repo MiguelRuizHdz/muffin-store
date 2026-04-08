@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { collection, onSnapshot, query, orderBy, doc, getDocs, updateDoc, setDoc, deleteDoc } from 'firebase/firestore'
+import { collection, onSnapshot, query, orderBy, doc, getDocs, updateDoc, setDoc, deleteDoc, addDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
-import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2 } from 'lucide-react'
+import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity } from 'lucide-react'
 import { Scanner } from '@yudiel/react-qr-scanner'
 
 interface OrderItem {
@@ -30,13 +30,19 @@ interface Order {
 export default function Admin() {
   const [isAuthChecking, setIsAuthChecking] = useState(true)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [role, setRole] = useState<'admin' | 'cocina' | null>(null)
+  
   const [passwordInput, setPasswordInput] = useState('')
-  const [dbPassword, setDbPassword] = useState('')
-  const [settingsDocId, setSettingsDocId] = useState('')
+  const [dbAdminPassword, setDbAdminPassword] = useState('')
+  const [dbCocinaPassword, setDbCocinaPassword] = useState('')
 
   const [orders, setOrders] = useState<Order[]>([])
+  const [logs, setLogs] = useState<any[]>([])
+  
   const [showSettings, setShowSettings] = useState(false)
+  const [showActivity, setShowActivity] = useState(false)
   const [newPassword, setNewPassword] = useState('')
+  const [newCocinaPassword, setNewCocinaPassword] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [isScanning, setIsScanning] = useState(false)
 
@@ -45,25 +51,28 @@ export default function Admin() {
     const fetchSettings = async () => {
       try {
         const settingsSnap = await getDocs(collection(db, 'settings'))
-        let found = false
+        
+        let adminPass = 'admin'
+        let cocinaPass = 'cocina'
+        let adminFound = false
+        let cocinaFound = false
+
         settingsSnap.forEach((d) => {
-          if (d.id === 'admin') {
-            setDbPassword(d.data().password)
-            setSettingsDocId(d.id)
-            found = true
-          }
+          if (d.id === 'admin') { adminPass = d.data().password; adminFound = true }
+          if (d.id === 'cocina') { cocinaPass = d.data().password; cocinaFound = true }
         })
         
-        // If not found, create default
-        if (!found) {
-          await setDoc(doc(db, 'settings', 'admin'), { password: 'admin' })
-          setDbPassword('admin')
-          setSettingsDocId('admin')
-        }
+        if (!adminFound) await setDoc(doc(db, 'settings', 'admin'), { password: adminPass })
+        if (!cocinaFound) await setDoc(doc(db, 'settings', 'cocina'), { password: cocinaPass })
+
+        setDbAdminPassword(adminPass)
+        setDbCocinaPassword(cocinaPass)
 
         // Check session
-        if (sessionStorage.getItem('adminAuth') === 'true') {
+        const storedRole = sessionStorage.getItem('userRole')
+        if (storedRole === 'admin' || storedRole === 'cocina') {
           setIsLoggedIn(true)
+          setRole(storedRole)
         }
       } catch (error) {
         console.error("Error fetching settings:", error)
@@ -94,62 +103,89 @@ export default function Admin() {
     return () => unsubscribe()
   }, [isLoggedIn])
 
+  // 3. Fetch logs
+  useEffect(() => {
+    if (!isLoggedIn || role !== 'admin' || !showActivity) return
+    const q = query(collection(db, 'order_logs'), orderBy('timestamp', 'desc'))
+    const unsub = onSnapshot(q, (snapshot) => {
+      setLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))
+    })
+    return () => unsub()
+  }, [isLoggedIn, role, showActivity])
+
+  const logEvent = async (desc: string) => {
+    try {
+      await addDoc(collection(db, 'order_logs'), {
+        action: desc,
+        role: role,
+        timestamp: new Date()
+      })
+    } catch(e) { console.error("Error logging event:", e) }
+  }
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
-    if (passwordInput === dbPassword) {
-      setIsLoggedIn(true)
-      sessionStorage.setItem('adminAuth', 'true')
-      toast.success('Sesión iniciada')
+    if (passwordInput === dbAdminPassword) {
+      setIsLoggedIn(true); setRole('admin')
+      sessionStorage.setItem('userRole', 'admin')
+      toast.success('Sesión de Admin iniciada')
+    } else if (passwordInput === dbCocinaPassword) {
+      setIsLoggedIn(true); setRole('cocina')
+      sessionStorage.setItem('userRole', 'cocina')
+      toast.success('Sesión de Cocina iniciada')
     } else {
       toast.error('Contraseña incorrecta')
     }
   }
 
   const handleLogout = () => {
-    setIsLoggedIn(false)
-    sessionStorage.removeItem('adminAuth')
+    setIsLoggedIn(false); setRole(null)
+    sessionStorage.removeItem('userRole')
     setPasswordInput('')
   }
 
-  const handleUpdatePassword = async (e: React.FormEvent) => {
+  const handleUpdatePassword = async (e: React.FormEvent, type: 'admin'|'cocina') => {
     e.preventDefault()
-    if (!newPassword || newPassword.length < 4) {
+    const pw = type === 'admin' ? newPassword : newCocinaPassword
+    if (!pw || pw.length < 4) {
       toast.error('La contraseña debe tener al menos 4 caracteres')
       return
     }
 
     try {
-      const docRef = doc(db, 'settings', settingsDocId)
-      await updateDoc(docRef, { password: newPassword })
-      setDbPassword(newPassword)
-      setNewPassword('')
-      setShowSettings(false)
-      toast.success('Contraseña actualizada correctamente')
+      await updateDoc(doc(db, 'settings', type), { password: pw })
+      if (type === 'admin') { setDbAdminPassword(pw); setNewPassword('') }
+      else { setDbCocinaPassword(pw); setNewCocinaPassword('') }
+      toast.success('Contraseña actualizada')
     } catch (error) {
-      console.error("Error updating password:", error)
       toast.error('Error al actualizar contraseña')
     }
   }
 
-  const updateOrderStatus = async (orderId: string, currentStatus: Order['status']) => {
+  const updateOrderStatus = async (orderId: string, shortId: string | undefined, currentStatus: Order['status']) => {
     try {
       let nextStatus: Order['status'] = 'cocinando'
       if (currentStatus === 'cocinando') nextStatus = 'empaque'
-      if (currentStatus === 'empaque') nextStatus = 'entregado'
+      if (currentStatus === 'empaque') {
+        if (role === 'cocina') return // Cocina cannot deliver
+        nextStatus = 'entregado'
+      }
       if (currentStatus === 'entregado') return
 
       await updateDoc(doc(db, 'orders', orderId), { status: nextStatus })
       toast.success('Estado actualizado')
+      logEvent(`Pedido #${shortId || orderId} movido a "${nextStatus.toUpperCase()}"`)
     } catch (error) {
-      toast.error('Error al actualizar estado')
+      toast.error('Error al actualizar código')
     }
   }
 
-  const deleteOrder = async (orderId: string) => {
+  const deleteOrder = async (orderId: string, shortId: string | undefined) => {
     if (window.confirm('¿Estás seguro de que deseas eliminar este pedido por completo? Esta acción no se puede deshacer.')) {
       try {
         await deleteDoc(doc(db, 'orders', orderId))
         toast.success('Pedido eliminado')
+        logEvent(`Pedido #${shortId || orderId} fue ELIMINADO del sistema`)
       } catch (error) {
         toast.error('Error al eliminar pedido')
       }
@@ -239,28 +275,53 @@ export default function Admin() {
         </div>
 
         <div style={{ display: 'flex', gap: '1rem' }}>
-          <button type="button" onClick={() => setShowSettings(!showSettings)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }}>
-            <Settings size={20} />
-          </button>
-          <button type="button" onClick={handleLogout} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }}>
+          {role === 'admin' && (
+            <>
+              <button type="button" onClick={() => { setShowActivity(!showActivity); setShowSettings(false) }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }} title="Historial">
+                <Activity size={20} />
+              </button>
+              <button type="button" onClick={() => { setShowSettings(!showSettings); setShowActivity(false) }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }} title="Ajustes">
+                <Settings size={20} />
+              </button>
+            </>
+          )}
+          <button type="button" onClick={handleLogout} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }} title="Cerrar sesión">
             <LogOut size={20} />
           </button>
         </div>
       </header>
 
-      {showSettings && (
+      {showSettings && role === 'admin' && (
+        <div style={{ background: 'var(--surface)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div>
+            <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Edit3 size={18}/> Contraseña ADMIN</h3>
+            <form onSubmit={e => handleUpdatePassword(e, 'admin')} style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <input type="text" placeholder="Nueva contraseña admin" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ padding: '0.6rem', borderRadius: '8px', border: '1px solid #ddd' }} />
+              <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem' }}>Guardar</button>
+            </form>
+          </div>
+          <div>
+            <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Edit3 size={18}/> Contraseña COCINA</h3>
+            <form onSubmit={e => handleUpdatePassword(e, 'cocina')} style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <input type="text" placeholder="Nueva contraseña cocina" value={newCocinaPassword} onChange={e => setNewCocinaPassword(e.target.value)} style={{ padding: '0.6rem', borderRadius: '8px', border: '1px solid #ddd' }} />
+              <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem' }}>Guardar</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showActivity && role === 'admin' && (
         <div style={{ background: 'var(--surface)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-          <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Edit3 size={18}/> Cambiar Contraseña</h3>
-          <form onSubmit={handleUpdatePassword} style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              type="password"
-              placeholder="Nueva contraseña"
-              value={newPassword}
-              onChange={e => setNewPassword(e.target.value)}
-              style={{ padding: '0.6rem', borderRadius: '8px', border: '1px solid #ddd', minWidth: '250px' }}
-            />
-            <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem' }}>Guardar</button>
-          </form>
+          <h3 style={{ marginTop: 0 }}>Historial de Actividad</h3>
+          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+            {logs.map(log => (
+              <div key={log.id} style={{ fontSize: '0.85rem', padding: '0.5rem 0', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between' }}>
+                <span><strong>[{log.role?.toUpperCase() || 'SISTEMA'}]</strong> {log.action}</span>
+                <span style={{ color: '#888' }}>{log.timestamp instanceof Date ? log.timestamp.toLocaleString() : (log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : '')}</span>
+              </div>
+            ))}
+            {logs.length === 0 && <span style={{ color: '#888' }}>No hay registros.</span>}
+          </div>
         </div>
       )}
 
@@ -293,18 +354,22 @@ export default function Admin() {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
-        {filteredOrders.map(order => (
+        {filteredOrders.map(order => {
+          const isCocinaView = role === 'cocina'
+          return (
           <div key={order.id} style={{ background: 'var(--surface)', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             
-            <button 
-              onClick={() => deleteOrder(order.id)}
-              title="Eliminar pedido"
-              style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444', opacity: 0.7 }}
-            >
-              <Trash2 size={18} />
-            </button>
+            {!isCocinaView && (
+              <button 
+                onClick={() => deleteOrder(order.id, order.shortId)}
+                title="Eliminar pedido"
+                style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444', opacity: 0.7 }}
+              >
+                <Trash2 size={18} />
+              </button>
+            )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', paddingRight: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', paddingRight: isCocinaView ? '0' : '2rem' }}>
               <div>
                 <h3 style={{ margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   {order.customerName}
@@ -326,34 +391,36 @@ export default function Admin() {
               </ul>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #eee', paddingTop: '1rem', marginTop: 'auto' }}>
-              <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>${order.total}</span>
+            <div style={{ display: 'flex', justifyContent: isCocinaView ? 'flex-end' : 'space-between', alignItems: 'center', borderTop: '1px solid #eee', paddingTop: '1rem', marginTop: 'auto' }}>
+              {!isCocinaView && <span style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>${order.total}</span>}
               
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button 
-                  onClick={() => togglePaymentStatus(order.id, order.isPaid)}
-                  type="button"
-                  style={{ 
-                    padding: '0.4rem 0.6rem', 
-                    borderRadius: '6px', 
-                    border: 'none', 
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    background: order.isPaid ? '#dcfce7' : '#f3f4f6',
-                    color: order.isPaid ? '#15803d' : '#4b5563',
-                    fontWeight: 600,
-                    fontSize: '0.85rem'
-                  }}
-                >
-                  <DollarSign size={14} />
-                  {order.isPaid ? 'Pagado' : 'Cobrar'}
-                </button>
-
-                {order.status !== 'entregado' && (
+                {!isCocinaView && (
                   <button 
-                    onClick={() => updateOrderStatus(order.id, order.status)}
+                    onClick={() => togglePaymentStatus(order.id, order.isPaid)}
+                    type="button"
+                    style={{ 
+                      padding: '0.4rem 0.6rem', 
+                      borderRadius: '6px', 
+                      border: 'none', 
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      background: order.isPaid ? '#dcfce7' : '#f3f4f6',
+                      color: order.isPaid ? '#15803d' : '#4b5563',
+                      fontWeight: 600,
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    <DollarSign size={14} />
+                    {order.isPaid ? 'Pagado' : 'Cobrar'}
+                  </button>
+                )}
+
+                {(order.status !== 'entregado' && !(isCocinaView && order.status === 'empaque')) && (
+                  <button 
+                    onClick={() => updateOrderStatus(order.id, order.shortId, order.status)}
                     type="button"
                     style={{ 
                       padding: '0.4rem 0.6rem', 
@@ -372,7 +439,7 @@ export default function Admin() {
               </div>
             </div>
           </div>
-        ))}
+        )})}
         {filteredOrders.length === 0 && (
           <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#888' }}>
             No hay pedidos encontrados.
