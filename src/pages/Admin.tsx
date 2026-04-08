@@ -212,8 +212,8 @@ export default function Admin() {
 
   if (!isLoggedIn) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg)' }}>
-        <form onSubmit={handleLogin} style={{ background: 'var(--surface)', padding: '2rem', borderRadius: '12px', width: '100%', maxWidth: '400px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-dark)' }}>
+        <form onSubmit={handleLogin} style={{ background: 'var(--bg-card)', padding: '2rem', borderRadius: '12px', width: '100%', maxWidth: '400px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
           <h2 style={{ textAlign: 'center', marginBottom: '1.5rem', color: 'var(--text)' }}>Acceso Admin</h2>
           <div style={{ marginBottom: '1rem' }}>
             <input
@@ -253,8 +253,8 @@ export default function Admin() {
   });
 
   return (
-    <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto', background: 'var(--bg)', minHeight: '100vh' }}>
-      <header style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', background: 'var(--surface)', padding: '1rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+    <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto', background: 'var(--bg-dark)', minHeight: '100vh' }}>
+      <header style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', background: 'var(--bg-card)', padding: '1rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
         <h1 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--primary)' }}>Gestión de Pedidos</h1>
         
         <div style={{ flex: '1 1 300px', maxWidth: '500px', display: 'flex', gap: '0.5rem' }}>
@@ -296,7 +296,7 @@ export default function Admin() {
       </header>
 
       {showSettings && role === 'admin' && (
-        <div style={{ background: 'var(--surface)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <div>
             <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Edit3 size={18}/> Contraseña ADMIN</h3>
             <form onSubmit={e => handleUpdatePassword(e, 'admin')} style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -315,7 +315,7 @@ export default function Admin() {
       )}
 
       {showActivity && role === 'admin' && (
-        <div style={{ background: 'var(--surface)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <h3 style={{ marginTop: 0 }}>Historial de Actividad</h3>
           <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
             {logs.map(log => (
@@ -330,7 +330,7 @@ export default function Admin() {
       )}
 
       {showStats && role === 'admin' && (
-        <div style={{ background: 'var(--surface)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><BarChart2 size={18}/> Estadísticas Diarias</h3>
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
@@ -350,10 +350,10 @@ export default function Admin() {
                  return acc;
               }, {})
             ).map((stat: any) => (
-              <div key={stat.date} style={{ padding: '1rem', background: 'var(--bg)', borderRadius: '8px', border: '1px solid #eee', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem', borderBottom: '1px solid #ddd', paddingBottom: '0.25rem' }}>{stat.date}</div>
-                <div style={{ fontSize: '0.9rem', color: '#666' }}>Ventas (Pagadas): <strong style={{ color: 'var(--primary)', fontSize: '1rem' }}>${stat.totalEarnings}</strong></div>
-                <div style={{ fontSize: '0.9rem', color: '#666' }}>Productos hechos: <strong style={{ color: '#333' }}>{stat.itemsCooked}</strong></div>
+              <div key={stat.date} style={{ padding: '1rem', background: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.25rem' }}>{stat.date}</div>
+                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Ventas (Pagadas): <strong style={{ color: 'var(--primary)', fontSize: '1rem' }}>${stat.totalEarnings}</strong></div>
+                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Productos hechos: <strong style={{ color: 'var(--text-main)' }}>{stat.itemsCooked}</strong></div>
               </div>
             ))}
           </div>
@@ -363,7 +363,7 @@ export default function Admin() {
 
       {isScanning && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ padding: '1.5rem', background: 'var(--surface)', borderRadius: '12px', width: '90%', maxWidth: '400px' }}>
+          <div style={{ padding: '1.5rem', background: 'var(--bg-card)', borderRadius: '12px', width: '90%', maxWidth: '400px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                <h3 style={{ margin: 0 }}>Escanear QR del Pedido</h3>
                <button onClick={() => setIsScanning(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }}><X /></button>
@@ -393,7 +393,7 @@ export default function Admin() {
         {filteredOrders.map(order => {
           const isCocinaView = role === 'cocina'
           return (
-          <div key={order.id} style={{ background: 'var(--surface)', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          <div key={order.id} style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             
             {!isCocinaView && (
               <button 
