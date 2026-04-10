@@ -24,6 +24,7 @@ interface Order {
   total: number
   status: 'nuevo' | 'cocinando' | 'empaque' | 'entregado'
   isPaid: boolean
+  orderType?: 'today' | 'tomorrow'
   createdAt: any
 }
 

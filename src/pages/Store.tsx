@@ -1,15 +1,10 @@
 import { useState, useEffect } from 'react'
-import { collection, addDoc, serverTimestamp, onSnapshot, query, runTransaction, doc } from 'firebase/firestore'
+import { collection, serverTimestamp, onSnapshot, query, runTransaction, doc } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
 import QRCode from 'react-qr-code'
 import { AlertCircle } from 'lucide-react'
 
-interface Flavor {
-  id: string
-  name: string
-  icon: string
-}
 
 interface Product {
   id: string
