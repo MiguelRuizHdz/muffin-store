@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { collection, onSnapshot, query, orderBy, doc, getDocs, updateDoc, setDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
-import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2, List, MessageCircle } from 'lucide-react'
+import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2, List, MessageCircle, Plus, Minus, Info } from 'lucide-react'
 import { Scanner } from '@yudiel/react-qr-scanner'
 
 interface OrderItem {
@@ -275,6 +275,15 @@ export default function Admin() {
     }
   }
 
+  const adjustStock = async (id: string, current: number, delta: number) => {
+    const newVal = Math.max(0, current + delta)
+    try {
+      await updateDoc(doc(db, 'inventory', id), { stock: newVal })
+    } catch (e) {
+      toast.error('Error al ajustar stock')
+    }
+  }
+
   const toggleGlobalLimit = async () => {
     try {
       await updateDoc(doc(db, 'settings', 'config'), { globalLimitTomorrow: !globalLimitTomorrow })
@@ -339,8 +348,12 @@ export default function Admin() {
 
   const filteredOrders = orders.filter(order => {
     const term = searchTerm.toLowerCase();
-    return (order.shortId && order.shortId.toLowerCase().includes(term)) ||
+    const matchesSearch = (order.shortId && order.shortId.toLowerCase().includes(term)) ||
            order.customerName.toLowerCase().includes(term);
+    
+    if (role === 'cocina' && order.status === 'entregado') return false;
+    
+    return matchesSearch;
   });
 
   return (
@@ -490,128 +503,147 @@ export default function Admin() {
       )}
 
       {activeTab === 'inventory' ? (
-        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-            <h2 style={{ margin: 0 }}>Gestión de Inventario</h2>
+        <div style={{ paddingBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem', background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+            <div>
+              <h2 style={{ margin: 0 }}>Gestión de Inventario</h2>
+              <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>Controla los niveles de stock y disponibilidad diaria.</p>
+            </div>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                 <button 
                   onClick={toggleGlobalLimit} 
+                  className="limit-toggle active"
                   style={{ 
-                    padding: '0.6rem 1rem', borderRadius: '8px', border: '1px solid #ddd', 
-                    background: globalLimitTomorrow ? '#f3f4f6' : '#dcfce7',
-                    color: globalLimitTomorrow ? '#4b5563' : '#15803d',
-                    fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem'
+                    background: globalLimitTomorrow ? 'rgba(239, 68, 68, 0.1)' : 'rgba(37, 211, 102, 0.1)',
+                    color: globalLimitTomorrow ? '#ef4444' : '#25D366',
+                    borderColor: globalLimitTomorrow ? 'rgba(239, 68, 68, 0.2)' : 'rgba(37, 211, 102, 0.2)',
                   }}
                >
-                 {globalLimitTomorrow ? '⚪ Limitado por Stock' : '🟢 Todo Libre (Mañana)'}
+                 {globalLimitTomorrow ? <Package size={16} /> : <CheckCircle size={16} />}
+                 {globalLimitTomorrow ? 'Stock Limitado (Mañana)' : 'Todo Disponible (Mañana)'}
                </button>
                {inventory.length === 0 && (
                  <button onClick={initializeInventory} className="add-btn">Inicializar Productos</button>
                )}
             </div>
           </div>
-          
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #eee' }}>
-                  <th style={{ padding: '1rem' }}>Producto/Sabor</th>
-                  <th style={{ padding: '1rem' }}>Stock (Bolsas/Piezas)</th>
-                  <th style={{ padding: '1rem' }}>Precio</th>
-                  <th style={{ padding: '1rem' }}>Límite Mañana</th>
-                  <th style={{ padding: '1rem' }}>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inventory.map((item) => (
-                  <tr key={item.id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontSize: '1.5rem' }}>{item.icon}</span>
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{item.name}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#888' }}>{item.type === 'flavor' ? 'Sabor de Muffin' : 'Producto Directo'}</div>
+
+          {[
+            { title: 'Sabores de Muffin', items: inventory.filter(i => i.type === 'flavor'), icon: <Info size={18} /> },
+            { title: 'Productos Directos', items: inventory.filter(i => i.type === 'product'), icon: <Package size={18} /> }
+          ].map((section) => section.items.length > 0 && (
+            <div key={section.title}>
+              <h3 className="inventory-section-title">{section.icon} {section.title}</h3>
+              <div className="inventory-grid">
+                {section.items.map((item) => (
+                  <div key={item.id} className="inventory-card">
+                    <div className="inventory-card-header">
+                      <div className="inventory-card-info">
+                        <div className="inventory-icon">{item.icon}</div>
+                        <div>
+                          <h4 className="inventory-name">{item.name}</h4>
+                          <span className="inventory-type">{item.type === 'flavor' ? 'Sabor' : 'Producto'}</span>
+                        </div>
                       </div>
-                    </td>
-                    <td style={{ padding: '1rem' }}>
-                      {editingInventoryId === item.id ? (
-                        <input 
-                          type="number" 
-                          value={editStockValue} 
-                          onChange={e => setEditStockValue(e.target.value)}
-                          style={{ width: '80px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                        />
-                      ) : (
-                        <span style={{ fontWeight: 700, color: item.stock > 0 ? 'var(--primary)' : '#ef4444' }}>
-                          {item.stock} {item.stock === 0 ? '(Agotado)' : ''}
-                        </span>
+                      {role === 'admin' && (
+                        <button 
+                          onClick={() => {
+                            if (editingInventoryId === item.id) {
+                              setEditingInventoryId(null)
+                            } else {
+                              setEditingInventoryId(item.id)
+                              setEditStockValue(item.stock.toString())
+                              setEditPriceValue((item.price || 0).toString())
+                            }
+                          }}
+                          className="adjust-btn"
+                          title="Editar detalles"
+                        >
+                          <Edit3 size={16} />
+                        </button>
                       )}
-                    </td>
-                    <td style={{ padding: '1rem' }}>
-                      {editingInventoryId === item.id && role === 'admin' ? (
-                        <input 
-                          type="number" 
-                          value={editPriceValue} 
-                          onChange={e => setEditPriceValue(e.target.value)}
-                          style={{ width: '80px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ddd' }}
-                        />
-                      ) : (
-                        <span>{item.price ? `$${item.price}` : '--'}</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '1rem' }}>
+                    </div>
+
+                    <div className="stock-control">
+                      <div>
+                        <div className="stock-label">STOCK ACTUAL</div>
+                        <div className="stock-value">
+                          {item.stock}
+                          <span className={`stock-badge ${item.stock <= 5 ? 'low' : 'healthy'}`}>
+                            {item.stock === 0 ? 'Agotado' : (item.stock <= 5 ? 'Bajo' : 'OK')}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="stock-adjusters">
+                        <button onClick={() => adjustStock(item.id, item.stock, -1)} className="adjust-btn"><Minus size={16} /></button>
+                        <button onClick={() => adjustStock(item.id, item.stock, 1)} className="adjust-btn"><Plus size={16} /></button>
+                      </div>
+                    </div>
+
+                    {editingInventoryId === item.id && (
+                      <div style={{ background: 'var(--bg-dark)', padding: '1rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                          <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>STOCK MANUAL</label>
+                            <input 
+                              type="number" 
+                              value={editStockValue} 
+                              onChange={e => setEditStockValue(e.target.value)}
+                              style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }}
+                            />
+                          </div>
+                          {role === 'admin' && item.type === 'product' && (
+                            <div style={{ flex: 1 }}>
+                              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>PRECIO $</label>
+                              <input 
+                                type="number" 
+                                value={editPriceValue} 
+                                onChange={e => setEditPriceValue(e.target.value)}
+                                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <button 
+                          onClick={() => {
+                            updateInventoryValue(item.id, 'stock', parseInt(editStockValue))
+                            if (role === 'admin' && item.type === 'product') {
+                              updateInventoryValue(item.id, 'price', parseInt(editPriceValue))
+                            }
+                          }}
+                          className="add-btn" 
+                          style={{ width: '100%', padding: '0.5rem' }}
+                        >
+                          Guardar Cambios
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="inventory-footer">
+                      <div>
+                        {role === 'admin' && item.price !== undefined ? (
+                          <span className="price-tag">${item.price}</span>
+                        ) : (
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            {item.type === 'flavor' ? 'Muffin Base' : ''}
+                          </span>
+                        )}
+                      </div>
                       <button 
                         onClick={() => toggleIndividualLimit(item.id, !!item.limitTomorrow)}
                         disabled={globalLimitTomorrow}
-                        style={{ 
-                          padding: '0.4rem 0.6rem', borderRadius: '6px', border: 'none', cursor: globalLimitTomorrow ? 'not-allowed' : 'pointer',
-                          background: (globalLimitTomorrow || item.limitTomorrow) ? '#f3f4f6' : '#dcfce7',
-                          color: (globalLimitTomorrow || item.limitTomorrow) ? '#4b5563' : '#15803d',
-                          fontSize: '0.75rem', fontWeight: 600, opacity: globalLimitTomorrow ? 0.7 : 1
-                        }}
+                        className={`limit-toggle ${item.limitTomorrow || globalLimitTomorrow ? 'active' : 'inactive'}`}
+                        style={{ opacity: globalLimitTomorrow ? 0.6 : 1 }}
                       >
-                        {(globalLimitTomorrow || item.limitTomorrow) ? 'Limitado' : 'Libre'}
+                        {item.limitTomorrow || globalLimitTomorrow ? <Package size={14} /> : <CheckCircle size={14} />}
+                        {item.limitTomorrow || globalLimitTomorrow ? 'Limitado' : 'Libre'}
                       </button>
-                    </td>
-                    <td style={{ padding: '1rem' }}>
-                      {editingInventoryId === item.id ? (
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button 
-                            onClick={() => {
-                              updateInventoryValue(item.id, 'stock', parseInt(editStockValue))
-                              if (role === 'admin' && item.price !== undefined) {
-                                updateInventoryValue(item.id, 'price', parseInt(editPriceValue))
-                              }
-                            }}
-                            className="add-btn" 
-                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                          >
-                            Guardar
-                          </button>
-                          <button 
-                            onClick={() => setEditingInventoryId(null)}
-                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid #ddd', background: 'white' }}
-                          >
-                            X
-                          </button>
-                        </div>
-                      ) : (
-                        <button 
-                          onClick={() => {
-                            setEditingInventoryId(item.id)
-                            setEditStockValue(item.stock.toString())
-                            setEditPriceValue((item.price || 0).toString())
-                          }}
-                          style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid #ddd', background: 'white', cursor: 'pointer' }}
-                        >
-                          Editar
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
