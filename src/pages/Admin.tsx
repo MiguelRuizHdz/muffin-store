@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { collection, onSnapshot, query, orderBy, doc, getDocs, updateDoc, setDoc, deleteDoc, addDoc } from 'firebase/firestore'
+import { collection, onSnapshot, query, orderBy, doc, getDocs, updateDoc, setDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
-import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2 } from 'lucide-react'
+import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2, List } from 'lucide-react'
 import { Scanner } from '@yudiel/react-qr-scanner'
 
 interface OrderItem {
@@ -38,6 +38,8 @@ export default function Admin() {
 
   const [orders, setOrders] = useState<Order[]>([])
   const [logs, setLogs] = useState<any[]>([])
+  const [inventory, setInventory] = useState<any[]>([])
+  const [activeTab, setActiveTab] = useState<'orders' | 'inventory'>('orders')
   
   const [showSettings, setShowSettings] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
@@ -46,6 +48,11 @@ export default function Admin() {
   const [newCocinaPassword, setNewCocinaPassword] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [isScanning, setIsScanning] = useState(false)
+  const [globalLimitTomorrow, setGlobalLimitTomorrow] = useState(false)
+
+  const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null)
+  const [editStockValue, setEditStockValue] = useState<string>('')
+  const [editPriceValue, setEditPriceValue] = useState<string>('')
 
   // 1. Fetch password settings
   useEffect(() => {
@@ -85,6 +92,19 @@ export default function Admin() {
     fetchSettings()
   }, [])
 
+  // 1.5 Fetch Store Config
+  useEffect(() => {
+    if (!isLoggedIn) return
+    const unsub = onSnapshot(doc(db, 'settings', 'config'), (d) => {
+      if (d.exists()) {
+        setGlobalLimitTomorrow(!!d.data().globalLimitTomorrow)
+      } else {
+        setDoc(doc(db, 'settings', 'config'), { globalLimitTomorrow: false })
+      }
+    })
+    return () => unsub()
+  }, [isLoggedIn])
+
   // 2. Fetch orders in real time (only if logged in)
   useEffect(() => {
     if (!isLoggedIn) return
@@ -101,6 +121,20 @@ export default function Admin() {
       toast.error("Error al cargar pedidos.")
     })
 
+    return () => unsubscribe()
+  }, [isLoggedIn])
+
+  // 2.5 Fetch inventory in real time
+  useEffect(() => {
+    if (!isLoggedIn) return
+    const q = query(collection(db, 'inventory'))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const invData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      setInventory(invData)
+    })
     return () => unsubscribe()
   }, [isLoggedIn])
 
@@ -202,6 +236,62 @@ export default function Admin() {
     }
   }
 
+  const initializeInventory = async () => {
+    if (inventory.length > 0) return
+    const toastId = toast.loading('Inicializando inventario...')
+    try {
+      const batch = writeBatch(db)
+      
+      const items = [
+        { id: 'flavor_nuez', name: 'Nuez', type: 'flavor', icon: '🥜', stock: 0 },
+        { id: 'flavor_almendra', name: 'Almendra', type: 'flavor', icon: '🌰', stock: 0 },
+        { id: 'flavor_arandano', name: 'Arándano', type: 'flavor', icon: '🫐', stock: 0 },
+        { id: 'flavor_chispas', name: 'Chispas de chocolate', type: 'flavor', icon: '🍫', stock: 0 },
+        { id: 'flavor_nutella', name: 'Nutella', type: 'flavor', icon: '🍫✨', stock: 0 },
+        { id: 'flavor_goober', name: 'Goober (fresa con cacahuate)', type: 'flavor', icon: '🍓🥜', stock: 0 },
+        { id: 'product_mini_pays', name: 'Mini pays de queso', type: 'product', icon: '🧀', stock: 0, price: 15 }
+      ]
+
+      items.forEach(item => {
+        const ref = doc(db, 'inventory', item.id)
+        batch.set(ref, item)
+      })
+
+      await batch.commit()
+      toast.success('Inventario inicializado', { id: toastId })
+    } catch (error) {
+      toast.error('Error al inicializar inventario', { id: toastId })
+    }
+  }
+
+  const updateInventoryValue = async (id: string, field: 'stock' | 'price', value: number) => {
+    try {
+      await updateDoc(doc(db, 'inventory', id), { [field]: value })
+      toast.success('Inventario actualizado')
+      setEditingInventoryId(null)
+    } catch (e) {
+      toast.error('Error al actualizar')
+    }
+  }
+
+  const toggleGlobalLimit = async () => {
+    try {
+      await updateDoc(doc(db, 'settings', 'config'), { globalLimitTomorrow: !globalLimitTomorrow })
+      toast.success('Configuración global actualizada')
+    } catch (e) {
+      toast.error('Error al actualizar config global')
+    }
+  }
+
+  const toggleIndividualLimit = async (id: string, current: boolean) => {
+    try {
+      await updateDoc(doc(db, 'inventory', id), { limitTomorrow: !current })
+      toast.success('Pre-pedido actualizado')
+    } catch (e) {
+      toast.error('Error al actualizar')
+    }
+  }
+
   if (isAuthChecking) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg)' }}>
@@ -276,6 +366,15 @@ export default function Admin() {
         </div>
 
         <div style={{ display: 'flex', gap: '1rem' }}>
+          <button 
+            type="button" 
+            onClick={() => setActiveTab(activeTab === 'orders' ? 'inventory' : 'orders')} 
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--primary)', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+          >
+            {activeTab === 'orders' ? <List size={18} /> : <Package size={18} />}
+            {activeTab === 'orders' ? 'Inventario' : 'Pedidos'}
+          </button>
+
           {role === 'admin' && (
             <>
               <button type="button" onClick={() => { setShowStats(!showStats); setShowActivity(false); setShowSettings(false) }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text)' }} title="Estadísticas Diarias">
@@ -389,7 +488,132 @@ export default function Admin() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+      {activeTab === 'inventory' ? (
+        <div style={{ background: 'var(--bg-card)', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <h2 style={{ margin: 0 }}>Gestión de Inventario</h2>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <button 
+                  onClick={toggleGlobalLimit} 
+                  style={{ 
+                    padding: '0.6rem 1rem', borderRadius: '8px', border: '1px solid #ddd', 
+                    background: globalLimitTomorrow ? '#f3f4f6' : '#dcfce7',
+                    color: globalLimitTomorrow ? '#4b5563' : '#15803d',
+                    fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem'
+                  }}
+               >
+                 {globalLimitTomorrow ? '⚪ Limitado por Stock' : '🟢 Todo Libre (Mañana)'}
+               </button>
+               {inventory.length === 0 && (
+                 <button onClick={initializeInventory} className="add-btn">Inicializar Productos</button>
+               )}
+            </div>
+          </div>
+          
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #eee' }}>
+                  <th style={{ padding: '1rem' }}>Producto/Sabor</th>
+                  <th style={{ padding: '1rem' }}>Stock (Bolsas/Piezas)</th>
+                  <th style={{ padding: '1rem' }}>Precio</th>
+                  <th style={{ padding: '1rem' }}>Límite Mañana</th>
+                  <th style={{ padding: '1rem' }}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inventory.map((item) => (
+                  <tr key={item.id} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1.5rem' }}>{item.icon}</span>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{item.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#888' }}>{item.type === 'flavor' ? 'Sabor de Muffin' : 'Producto Directo'}</div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '1rem' }}>
+                      {editingInventoryId === item.id ? (
+                        <input 
+                          type="number" 
+                          value={editStockValue} 
+                          onChange={e => setEditStockValue(e.target.value)}
+                          style={{ width: '80px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                        />
+                      ) : (
+                        <span style={{ fontWeight: 700, color: item.stock > 0 ? 'var(--primary)' : '#ef4444' }}>
+                          {item.stock} {item.stock === 0 ? '(Agotado)' : ''}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '1rem' }}>
+                      {editingInventoryId === item.id && role === 'admin' ? (
+                        <input 
+                          type="number" 
+                          value={editPriceValue} 
+                          onChange={e => setEditPriceValue(e.target.value)}
+                          style={{ width: '80px', padding: '0.4rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                        />
+                      ) : (
+                        <span>{item.price ? `$${item.price}` : '--'}</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '1rem' }}>
+                      <button 
+                        onClick={() => toggleIndividualLimit(item.id, !!item.limitTomorrow)}
+                        disabled={globalLimitTomorrow}
+                        style={{ 
+                          padding: '0.4rem 0.6rem', borderRadius: '6px', border: 'none', cursor: globalLimitTomorrow ? 'not-allowed' : 'pointer',
+                          background: (globalLimitTomorrow || item.limitTomorrow) ? '#f3f4f6' : '#dcfce7',
+                          color: (globalLimitTomorrow || item.limitTomorrow) ? '#4b5563' : '#15803d',
+                          fontSize: '0.75rem', fontWeight: 600, opacity: globalLimitTomorrow ? 0.7 : 1
+                        }}
+                      >
+                        {(globalLimitTomorrow || item.limitTomorrow) ? 'Limitado' : 'Libre'}
+                      </button>
+                    </td>
+                    <td style={{ padding: '1rem' }}>
+                      {editingInventoryId === item.id ? (
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button 
+                            onClick={() => {
+                              updateInventoryValue(item.id, 'stock', parseInt(editStockValue))
+                              if (role === 'admin' && item.price !== undefined) {
+                                updateInventoryValue(item.id, 'price', parseInt(editPriceValue))
+                              }
+                            }}
+                            className="add-btn" 
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                          >
+                            Guardar
+                          </button>
+                          <button 
+                            onClick={() => setEditingInventoryId(null)}
+                            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid #ddd', background: 'white' }}
+                          >
+                            X
+                          </button>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => {
+                            setEditingInventoryId(item.id)
+                            setEditStockValue(item.stock.toString())
+                            setEditPriceValue((item.price || 0).toString())
+                          }}
+                          style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', borderRadius: '8px', border: '1px solid #ddd', background: 'white', cursor: 'pointer' }}
+                        >
+                          Editar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
         {filteredOrders.map(order => {
           const isCocinaView = role === 'cocina'
           return (
@@ -413,7 +637,14 @@ export default function Admin() {
                 </h3>
                 {!isCocinaView && <span style={{ fontSize: '0.85rem', color: '#666' }}>{order.customerPhone}</span>}
               </div>
-              {getStatusBadge(order.status)}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
+                {getStatusBadge(order.status)}
+                {order.orderType === 'tomorrow' && (
+                  <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '0.65rem', fontWeight: 800, padding: '0.1rem 0.4rem', borderRadius: '4px', border: '1px solid #fcd34d' }}>
+                    📅 MAÑANA
+                  </span>
+                )}
+              </div>
             </div>
 
             <div style={{ marginBottom: '1rem', flex: 1 }}>
@@ -482,6 +713,7 @@ export default function Admin() {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }

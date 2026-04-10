@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { useState, useEffect } from 'react'
+import { collection, addDoc, serverTimestamp, onSnapshot, query, runTransaction, doc } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
 import QRCode from 'react-qr-code'
+import { AlertCircle } from 'lucide-react'
 
 interface Flavor {
   id: string
@@ -22,6 +23,7 @@ interface Product {
 interface CartItem {
   id: string
   productId: string
+  inventoryId: string // Item to decrement stock from
   name: string
   icon: string
   flavorName?: string
@@ -30,38 +32,76 @@ interface CartItem {
   quantity: number
 }
 
-const MUFFIN_FLAVORS: Flavor[] = [
-  { id: 'nuez', name: 'Nuez', icon: String.fromCodePoint(0x1F95C) },
-  { id: 'almendra', name: 'Almendra', icon: String.fromCodePoint(0x1F330) },
-  { id: 'arandano', name: 'Arándano', icon: String.fromCodePoint(0x1FAD0) },
-  { id: 'chispas', name: 'Chispas de chocolate', icon: String.fromCodePoint(0x1F36B) },
-  { id: 'nutella', name: 'Nutella', icon: String.fromCodePoint(0x1F36B) + String.fromCodePoint(0x2728) },
-  { id: 'goober', name: 'Goober (fresa con cacahuate)', icon: String.fromCodePoint(0x1F353) + String.fromCodePoint(0x1F95C) }
-]
-
-const PRODUCTS: Product[] = [
-  {
-    id: 'muffin_platano',
-    name: 'Muffins de plátano',
-    icon: String.fromCodePoint(0x1F34C),
-    price: 15,
-    description: 'Deliciosos muffins caseros. Elige un sabor por pieza.',
-    requiresFlavor: true
-  },
-  {
-    id: 'mini_pays_queso',
-    name: 'Mini pays de queso',
-    icon: String.fromCodePoint(0x1F967),
-    price: 15,
-    description: '2 por $15 (1 bolsa incluye 2 pays)',
-    requiresFlavor: false
-  }
-]
-
 export default function Store() {
+  const [inventory, setInventory] = useState<any[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedFlavor, setSelectedFlavor] = useState<string>('')
+  const [orderType, setOrderType] = useState<'today' | 'tomorrow'>('today')
+  const [globalLimitTomorrow, setGlobalLimitTomorrow] = useState(false)
   
+  // Real-time inventory
+  useEffect(() => {
+    const q = query(collection(db, 'inventory'))
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setInventory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+    })
+    return () => unsubscribe()
+  }, [])
+
+  // Configuración global
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'config'), (d) => {
+      if (d.exists()) setGlobalLimitTomorrow(!!d.data().globalLimitTomorrow)
+    })
+    return () => unsub()
+  }, [])
+
+  // Limpiar carrito al cambiar tipo de pedido
+  const handleOrderTypeChange = (type: 'today' | 'tomorrow') => {
+    if (cart.length > 0 && !window.confirm('Cambiar el tipo de pedido vaciará tu carrito actual. ¿Continuar?')) {
+      return
+    }
+    setOrderType(type)
+    setCart([])
+  }
+
+  // Derived data
+  const MUFFIN_FLAVORS = inventory.filter(i => i.type === 'flavor')
+  
+  // Base products (we'll keep the muffin base entry for now but it could be in DB too)
+  const PRODUCTS: Product[] = [
+    {
+      id: 'muffin_platano',
+      name: 'Muffins de plátano',
+      icon: '🍌',
+      price: 15,
+      description: 'Deliciosos muffins caseros. Elige un sabor por pieza.',
+      requiresFlavor: true
+    },
+    {
+      id: 'product_mini_pays',
+      name: 'Mini pays de queso',
+      icon: '🧀',
+      price: inventory.find(i => i.id === 'product_mini_pays')?.price || 15,
+      description: '2 por $15 (1 bolsa incluye 2 pays)',
+      requiresFlavor: false
+    },
+    ...inventory.filter(i => i.type === 'product' && i.id !== 'product_mini_pays').map(i => ({
+      id: i.id,
+      name: i.name,
+      icon: i.icon,
+      price: i.price,
+      description: '',
+      requiresFlavor: false
+    }))
+  ]
+  
+  const shouldLimit = (inventoryId: string) => {
+    if (orderType === 'today') return true
+    const item = inventory.find(i => i.id === inventoryId)
+    return globalLimitTomorrow || (item && !!item.limitTomorrow)
+  }
+
   // Customer Details
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
@@ -78,11 +118,25 @@ export default function Store() {
     }
 
     const flavor = MUFFIN_FLAVORS.find(f => f.id === selectedFlavor)
+    const inventoryId = product.requiresFlavor ? selectedFlavor : product.id
+    const inventoryItem = inventory.find(i => i.id === inventoryId)
+    const isLimited = shouldLimit(inventoryId)
+
+    // Para pedidos con límite, validar stock.
+    if (isLimited && (!inventoryItem || inventoryItem.stock <= 0)) {
+      toast.error('Lo sentimos, este producto se ha agotado para este periodo.')
+      return
+    }
+
     const cartItemId = product.requiresFlavor ? `${product.id}-${selectedFlavor}` : product.id
 
     setCart(prev => {
       const existing = prev.find(item => item.id === cartItemId)
       if (existing) {
+        if (isLimited && inventoryItem && existing.quantity + 1 > inventoryItem.stock) {
+          toast.error(`Solo quedan ${inventoryItem.stock} disponibles.`)
+          return prev
+        }
         return prev.map(item =>
           item.id === cartItemId
             ? { ...item, quantity: item.quantity + 1 }
@@ -90,9 +144,10 @@ export default function Store() {
         )
       }
 
-      const newItem: any = {
+      const newItem: CartItem = {
         id: cartItemId,
         productId: product.id,
+        inventoryId: inventoryId,
         name: product.name,
         icon: product.icon,
         price: product.price,
@@ -115,7 +170,15 @@ export default function Store() {
   const updateQuantity = (id: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
+        const inventoryItem = inventory.find(i => i.id === item.inventoryId)
         const newQty = item.quantity + delta
+        const isLimited = shouldLimit(item.inventoryId)
+        
+        if (isLimited && delta > 0 && inventoryItem && newQty > inventoryItem.stock) {
+          toast.error(`Solo quedan ${inventoryItem.stock} disponibles.`)
+          return item
+        }
+        
         return newQty > 0 ? { ...item, quantity: newQty } : item
       }
       return item
@@ -140,31 +203,63 @@ export default function Store() {
     const toastId = toast.loading('Procesando orden...')
 
     try {
-      const shortId = Math.random().toString(36).substring(2, 6).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase()
-      
-      const orderData = {
-        shortId,
-        customerName,
-        customerPhone,
-        items: cart,
-        total,
-        status: 'nuevo',
-        isPaid: false,
-        createdAt: serverTimestamp()
-      }
+      // Usar transacción para verificar stock y decrementar
+      await runTransaction(db, async (transaction) => {
+        const itemsToLimit = cart.filter(item => shouldLimit(item.inventoryId))
+        let inventorySnapshots: any[] = []
 
-      await addDoc(collection(db, 'orders'), orderData)
+        if (itemsToLimit.length > 0) {
+          inventorySnapshots = await Promise.all(
+            itemsToLimit.map(item => transaction.get(doc(db, 'inventory', item.inventoryId)))
+          )
+
+          // Verificación de stock
+          for (let i = 0; i < itemsToLimit.length; i++) {
+            const item = itemsToLimit[i]
+            const snap = inventorySnapshots[i]
+            if (!snap.exists()) continue // O manejar error
+            const currentStock = snap.data().stock
+            if (currentStock < item.quantity) {
+              throw new Error(`¡Ups! Stock insuficiente para "${item.flavorName || item.name}". Solo quedan ${currentStock}.`)
+            }
+          }
+
+          // Decrementar stock
+          itemsToLimit.forEach((item, idx) => {
+            const snap = inventorySnapshots[idx]
+            const newStock = snap.data().stock - item.quantity
+            transaction.update(doc(db, 'inventory', item.inventoryId), { stock: newStock })
+          })
+        }
+
+        // Crear orden
+        const shortId = Math.random().toString(36).substring(2, 6).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase()
+        const orderData = {
+          shortId,
+          customerName,
+          customerPhone,
+          items: cart,
+          total,
+          status: 'nuevo',
+          isPaid: false,
+          orderType, // 'today' | 'tomorrow'
+          createdAt: serverTimestamp()
+        }
+        
+        const orderRef = doc(collection(db, 'orders'))
+        transaction.set(orderRef, orderData)
+        setOrderId(shortId)
+      })
       
-      setOrderId(shortId)
       setOrderSuccess(true)
       setCart([])
       setCustomerName('')
       setCustomerPhone('')
       toast.success('¡Orden enviada con éxito!', { id: toastId })
 
-    } catch (error) {
-      console.error("Error adding document: ", error)
-      toast.error('Ocurrió un error al enviar tu orden.', { id: toastId })
+    } catch (error: any) {
+      console.error("Error en checkout: ", error)
+      toast.error(error.message || 'Ocurrió un error al enviar tu orden.', { id: toastId })
     } finally {
       setIsSubmitting(false)
     }
@@ -217,6 +312,31 @@ export default function Store() {
         <p>Los mejores postres caseros a tu alcance {String.fromCodePoint(0x1F9C1)}</p>
       </header>
 
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', padding: '0.5rem', background: 'var(--surface)', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+        <button 
+          onClick={() => handleOrderTypeChange('today')}
+          style={{ 
+            flex: 1, padding: '0.8rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
+            background: orderType === 'today' ? 'var(--primary)' : 'transparent',
+            color: orderType === 'today' ? 'white' : 'var(--text)',
+            fontWeight: 600, transition: 'all 0.2s'
+          }}
+        >
+          🔥 Disponible Hoy
+        </button>
+        <button 
+          onClick={() => handleOrderTypeChange('tomorrow')}
+          style={{ 
+            flex: 1, padding: '0.8rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
+            background: orderType === 'tomorrow' ? 'var(--primary)' : 'transparent',
+            color: orderType === 'tomorrow' ? 'white' : 'var(--text)',
+            fontWeight: 600, transition: 'all 0.2s'
+          }}
+        >
+          📅 Pedido para Mañana
+        </button>
+      </div>
+
       <div className="grid">
         {PRODUCTS.map(product => (
           <div key={product.id} className="card">
@@ -238,21 +358,41 @@ export default function Store() {
                   onChange={(e) => setSelectedFlavor(e.target.value)}
                 >
                   <option value="" disabled>Selecciona un sabor...</option>
-                  {MUFFIN_FLAVORS.map(flavor => (
-                    <option key={flavor.id} value={flavor.id}>
-                      {flavor.icon} {flavor.name}
-                    </option>
-                  ))}
+                  {MUFFIN_FLAVORS.map(flavor => {
+                    const isLimited = shouldLimit(flavor.id)
+                    return (
+                      <option key={flavor.id} value={flavor.id} disabled={isLimited && flavor.stock <= 0}>
+                        {flavor.icon} {flavor.name} {isLimited ? (flavor.stock <= 0 ? '(AGOTADO)' : `(${flavor.stock} disponibles)`) : ''}
+                      </option>
+                    )
+                  })}
                 </select>
               )}
               
-              <button 
-                className="add-btn" 
-                onClick={() => handleAddToCart(product)}
-                disabled={product.requiresFlavor && !selectedFlavor}
-              >
-                <span>{String.fromCodePoint(0x2795)}</span> Agregar al carrito
-              </button>
+              {(() => {
+                const inventoryId = product.requiresFlavor ? selectedFlavor : product.id
+                const invItem = inventory.find(i => i.id === inventoryId)
+                const isLimited = shouldLimit(inventoryId)
+                const isOutOfStock = isLimited && invItem && invItem.stock <= 0
+                
+                return (
+                  <>
+                    {isOutOfStock && (
+                      <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <AlertCircle size={14} /> Producto temporalmente agotado
+                      </div>
+                    )}
+                    <button 
+                      className="add-btn" 
+                      onClick={() => handleAddToCart(product)}
+                      disabled={(product.requiresFlavor && !selectedFlavor) || isOutOfStock}
+                      style={{ opacity: isOutOfStock ? 0.6 : 1 }}
+                    >
+                      <span>{String.fromCodePoint(0x2795)}</span> {isOutOfStock ? 'Agotado' : 'Agregar al carrito'}
+                    </button>
+                  </>
+                )
+              })()}
             </div>
           </div>
         ))}
