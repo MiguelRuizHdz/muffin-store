@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { collection, onSnapshot, query, orderBy, doc, getDocs, updateDoc, setDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
-import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2, List } from 'lucide-react'
+import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2, List, MessageCircle } from 'lucide-react'
 import { Scanner } from '@yudiel/react-qr-scanner'
 
 interface OrderItem {
@@ -635,7 +635,20 @@ export default function Admin() {
                   {order.customerName}
                   {order.shortId && <span style={{ fontSize: '0.8rem', background: '#e5e7eb', padding: '0.1rem 0.4rem', borderRadius: '4px', color: '#4b5563', fontFamily: 'monospace' }}>#{order.shortId}</span>}
                 </h3>
-                {!isCocinaView && <span style={{ fontSize: '0.85rem', color: '#666' }}>{order.customerPhone}</span>}
+                {!isCocinaView && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#666' }}>{order.customerPhone}</span>
+                    <a 
+                      href={`https://wa.me/52${order.customerPhone}?text=${encodeURIComponent(`Hola ${order.customerName}, el total es de $${order.total}. ¿Gustas que te pase los datos para el pago?`)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Enviar WhatsApp"
+                      style={{ color: '#25D366', display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+                    >
+                      <MessageCircle size={16} />
+                    </a>
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
                 {getStatusBadge(order.status)}
