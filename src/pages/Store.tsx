@@ -87,7 +87,7 @@ export default function Store() {
       requiresFlavor: true
     },
     ...inventory
-      .filter(i => i.type === 'product')
+      .filter(i => i.type === 'product' && i.id !== 'product_muffin_base')
       .sort((a, b) => {
         // Orden específico: pays primero, luego cacahuates, luego resto
         const priority = { 'product_mini_pays': 1, 'product_cacahuates': 2 }
