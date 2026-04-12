@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { collection, onSnapshot, query, orderBy, doc, getDocs, updateDoc, setDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
-import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2, List, MessageCircle, Plus, Minus, Info, Calendar, AlertCircle } from 'lucide-react'
+import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2, List, MessageCircle, Plus, Minus, Info, Calendar, AlertCircle, RotateCcw } from 'lucide-react'
 import { Scanner } from '@yudiel/react-qr-scanner'
 import { getNextBusinessDays, formatDateId, formatDisplayDate } from '../utils/dates'
 
@@ -95,7 +95,7 @@ export default function Admin() {
         const storedRole = sessionStorage.getItem('userRole')
         if (storedRole === 'admin' || storedRole === 'cocina') {
           setIsLoggedIn(true)
-          setRole(storedRole)
+          setRole(storedRole as 'admin' | 'cocina')
         }
       } catch (error) {
         console.error("Error fetching settings:", error)
@@ -106,19 +106,6 @@ export default function Admin() {
     }
     fetchSettings()
   }, [])
-
-  // 1.5 Fetch Store Config
-  useEffect(() => {
-    if (!isLoggedIn) return
-    const unsub = onSnapshot(doc(db, 'settings', 'config'), (d) => {
-      if (d.exists()) {
-        setGlobalLimitTomorrow(!!d.data().globalLimitTomorrow)
-      } else {
-        setDoc(doc(db, 'settings', 'config'), { globalLimitTomorrow: false })
-      }
-    })
-    return () => unsub()
-  }, [isLoggedIn])
 
   // 2. Fetch orders in real time (only if logged in)
   useEffect(() => {
@@ -170,8 +157,10 @@ export default function Admin() {
     if (!isLoggedIn) return
     const unsub = onSnapshot(doc(db, 'daily_inventory', selectedInventoryDate), (d) => {
       if (d.exists()) {
-        setDailyInventory(d.data().stocks || {})
-        setIsUnlimitedDay(!!d.data().isUnlimited)
+        const data = d.data()
+        const currentStocks: Record<string, number> = data.stocks || {}
+        setDailyInventory(currentStocks)
+        setIsUnlimitedDay(!!data.isUnlimited)
       } else {
         setDailyInventory({})
         setIsUnlimitedDay(false)
@@ -238,7 +227,6 @@ export default function Admin() {
       toast.error('Error al actualizar contraseña')
     }
   }
-
   const updateOrderStatus = async (orderId: string, shortId: string | undefined, currentStatus: Order['status']) => {
     try {
       let nextStatus: Order['status'] = 'cocinando'
@@ -254,6 +242,17 @@ export default function Admin() {
       logEvent(`Pedido #${shortId || orderId} movido a "${nextStatus.toUpperCase()}"`)
     } catch (error) {
       toast.error('Error al actualizar código')
+    }
+  }
+
+  const resetOrderStatus = async (orderId: string, shortId: string | undefined) => {
+    if (!window.confirm(`¿Seguro que deseas reiniciar el pedido #${shortId || orderId}? Volverá al estado "NUEVO".`)) return
+    try {
+      await updateDoc(doc(db, 'orders', orderId), { status: 'nuevo' })
+      toast.success('Pedido reiniciado')
+      logEvent(`Pedido #${shortId || orderId} fue REINICIADO a "NUEVO"`)
+    } catch (error) {
+      toast.error('Error al reiniciar pedido')
     }
   }
 
@@ -275,34 +274,6 @@ export default function Admin() {
       toast.success(currentPaid ? 'Marcado como No Pagado' : 'Marcado como Pagado')
     } catch (error) {
       toast.error('Error al actualizar pago')
-    }
-  }
-
-  const initializeInventory = async () => {
-    const toastId = toast.loading('Sincronizando productos base...')
-    try {
-      const batch = writeBatch(db)
-      
-      const items = [
-        { id: 'flavor_nuez', name: 'Nuez', type: 'flavor', icon: '🥜', stock: 0 },
-        { id: 'flavor_almendra', name: 'Almendra', type: 'flavor', icon: '🌰', stock: 0 },
-        { id: 'flavor_arandano', name: 'Arándano', type: 'flavor', icon: '🫐', stock: 0 },
-        { id: 'flavor_chispas', name: 'Chispas de chocolate', type: 'flavor', icon: '🍫', stock: 0 },
-        { id: 'flavor_nutella', name: 'Nutella', type: 'flavor', icon: '🍫✨', stock: 0 },
-        { id: 'flavor_goober', name: 'Goober (fresa con cacahuate)', type: 'flavor', icon: '🍓🥜', stock: 0 },
-        { id: 'product_mini_pays', name: 'Mini pays de queso', type: 'product', icon: '🧀', stock: 0, price: 15, description: '2 por $15 (1 bolsa incluye 2 pays)' },
-        { id: 'product_cacahuates', name: 'Bolsa de cacahuates japoneses', type: 'product', icon: '🥜', stock: 0, price: 15, description: 'Contiene bolsa de salsa botanera' }
-      ]
-
-      items.forEach(item => {
-        const ref = doc(db, 'inventory', item.id)
-        batch.set(ref, item, { merge: true }) // Merge for safety
-      })
-
-      await batch.commit()
-      toast.success('Productos base cargados correctamente', { id: toastId })
-    } catch (error) {
-      toast.error('Error al sincronizar productos', { id: toastId })
     }
   }
 
@@ -331,21 +302,32 @@ export default function Admin() {
     }
   }
 
-  const toggleGlobalLimit = async () => {
+  const initializeInventory = async () => {
+    const toastId = toast.loading('Sincronizando productos base...')
     try {
-      await updateDoc(doc(db, 'settings', 'config'), { globalLimitTomorrow: !globalLimitTomorrow })
-      toast.success('Configuración global actualizada')
-    } catch (e) {
-      toast.error('Error al actualizar config global')
-    }
-  }
+      const batch = writeBatch(db)
+      
+      const items = [
+        { id: 'flavor_nuez', name: 'Nuez', type: 'flavor', icon: '🥜', stock: 0 },
+        { id: 'flavor_almendra', name: 'Almendra', type: 'flavor', icon: '🌰', stock: 0 },
+        { id: 'flavor_arandano', name: 'Arándano', type: 'flavor', icon: '🫐', stock: 0 },
+        { id: 'flavor_chispas', name: 'Chispas de chocolate', type: 'flavor', icon: '🍫', stock: 0 },
+        { id: 'flavor_nutella', name: 'Nutella', type: 'flavor', icon: '🍫✨', stock: 0 },
+        { id: 'flavor_goober', name: 'Goober (fresa con cacahuate)', type: 'flavor', icon: '🍓🥜', stock: 0 },
+        { id: 'product_muffin_base', name: 'Muffins de plátano', type: 'product', icon: '🍌', stock: 0, price: 15, description: 'Precio base del muffin' },
+        { id: 'product_mini_pays', name: 'Mini pays de queso', type: 'product', icon: '🧀', stock: 0, price: 15, description: '2 por $15 (1 bolsa incluye 2 pays)' },
+        { id: 'product_cacahuates', name: 'Bolsa de cacahuates japoneses', type: 'product', icon: '🥜', stock: 0, price: 15, description: 'Contiene bolsa de salsa botanera' }
+      ]
 
-  const toggleIndividualLimit = async (id: string, current: boolean) => {
-    try {
-      await updateDoc(doc(db, 'inventory', id), { limitTomorrow: !current })
-      toast.success('Pre-pedido actualizado')
-    } catch (e) {
-      toast.error('Error al actualizar')
+      items.forEach(item => {
+        const ref = doc(db, 'inventory', item.id)
+        batch.set(ref, item, { merge: true })
+      })
+
+      await batch.commit()
+      toast.success('Productos base cargados correctamente', { id: toastId })
+    } catch (error) {
+      toast.error('Error al sincronizar productos', { id: toastId })
     }
   }
 
@@ -900,6 +882,26 @@ export default function Admin() {
                     }}
                   >
                     {order.status === 'nuevo' ? 'Cocinar' : (order.status === 'cocinando' ? 'Empacar' : 'Entregar')}
+                  </button>
+                )}
+                {order.status !== 'nuevo' && (
+                  <button 
+                    onClick={() => resetOrderStatus(order.id, order.shortId)} 
+                    style={{ 
+                      padding: '0.6rem 1rem', 
+                      borderRadius: '8px', 
+                      border: '1px solid #ddd', 
+                      background: 'white', 
+                      color: '#4b5563', 
+                      cursor: 'pointer', 
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem'
+                    }}
+                    title="Reiniciar pedido a Nuevo"
+                  >
+                    <RotateCcw size={16} /> Reiniciar
                   </button>
                 )}
               </div>

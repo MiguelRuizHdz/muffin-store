@@ -3,7 +3,7 @@ import { collection, serverTimestamp, onSnapshot, query, runTransaction, doc } f
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
 import QRCode from 'react-qr-code'
-import { AlertCircle, Calendar } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { getNextBusinessDays, formatDateId, formatDisplayDate } from '../utils/dates'
 
 
@@ -82,7 +82,7 @@ export default function Store() {
       id: 'muffin_platano',
       name: 'Muffins de plátano',
       icon: '🍌',
-      price: 15,
+      price: inventory.find(i => i.id === 'product_muffin_base')?.price || 15,
       description: 'Deliciosos muffins caseros. Elige un sabor por pieza.',
       requiresFlavor: true
     },
@@ -216,7 +216,7 @@ export default function Store() {
         const isToday = deliveryDate === formatDateId(new Date())
         
         let isUnlimited = !isToday // Por defecto ilimitado si no es hoy
-        let currentStocks = {}
+        let currentStocks: Record<string, number> = {}
 
         if (dailyInventorySnap.exists()) {
           currentStocks = dailyInventorySnap.data().stocks || {}
