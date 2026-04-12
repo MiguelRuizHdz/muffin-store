@@ -3,7 +3,8 @@ import { collection, serverTimestamp, onSnapshot, query, runTransaction, doc } f
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
 import QRCode from 'react-qr-code'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Calendar } from 'lucide-react'
+import { getNextBusinessDays, formatDateId, formatDisplayDate } from '../utils/dates'
 
 
 interface Product {
@@ -31,8 +32,11 @@ export default function Store() {
   const [inventory, setInventory] = useState<any[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedFlavor, setSelectedFlavor] = useState<string>('')
-  const [orderType, setOrderType] = useState<'today' | 'tomorrow'>('today')
-  const [globalLimitTomorrow, setGlobalLimitTomorrow] = useState(false)
+  
+  const [availableDates] = useState(() => getNextBusinessDays(5))
+  const [deliveryDate, setDeliveryDate] = useState(formatDateId(new Date()))
+  const [dailyInventory, setDailyInventory] = useState<Record<string, number>>({})
+  const [isUnlimitedDay, setIsUnlimitedDay] = useState(false)
   
   // Real-time inventory
   useEffect(() => {
@@ -43,20 +47,29 @@ export default function Store() {
     return () => unsubscribe()
   }, [])
 
-  // Configuración global
+  // Real-time daily inventory for selected date
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'settings', 'config'), (d) => {
-      if (d.exists()) setGlobalLimitTomorrow(!!d.data().globalLimitTomorrow)
+    const unsub = onSnapshot(doc(db, 'daily_inventory', deliveryDate), (d) => {
+      const isToday = deliveryDate === formatDateId(new Date())
+      if (d.exists()) {
+        setDailyInventory(d.data().stocks || {})
+        setIsUnlimitedDay(!!d.data().isUnlimited)
+      } else {
+        setDailyInventory({})
+        // Si no existe el registro, los días futuros son ilimitados por defecto
+        setIsUnlimitedDay(!isToday)
+      }
     })
     return () => unsub()
-  }, [])
+  }, [deliveryDate])
 
   // Limpiar carrito al cambiar tipo de pedido
-  const handleOrderTypeChange = (type: 'today' | 'tomorrow') => {
-    if (cart.length > 0 && !window.confirm('Cambiar el tipo de pedido vaciará tu carrito actual. ¿Continuar?')) {
+  // Limpiar carrito al cambiar fecha de entrega
+  const handleDateChange = (dateId: string) => {
+    if (cart.length > 0 && !window.confirm('Cambiar la fecha de entrega vaciará tu carrito actual. ¿Continuar?')) {
       return
     }
-    setOrderType(type)
+    setDeliveryDate(dateId)
     setCart([])
   }
 
@@ -73,28 +86,27 @@ export default function Store() {
       description: 'Deliciosos muffins caseros. Elige un sabor por pieza.',
       requiresFlavor: true
     },
-    {
-      id: 'product_mini_pays',
-      name: 'Mini pays de queso',
-      icon: '🧀',
-      price: inventory.find(i => i.id === 'product_mini_pays')?.price || 15,
-      description: '2 por $15 (1 bolsa incluye 2 pays)',
-      requiresFlavor: false
-    },
-    ...inventory.filter(i => i.type === 'product' && i.id !== 'product_mini_pays').map(i => ({
-      id: i.id,
-      name: i.name,
-      icon: i.icon,
-      price: i.price,
-      description: '',
-      requiresFlavor: false
-    }))
+    ...inventory
+      .filter(i => i.type === 'product')
+      .sort((a, b) => {
+        // Orden específico: pays primero, luego cacahuates, luego resto
+        const priority = { 'product_mini_pays': 1, 'product_cacahuates': 2 }
+        const prioA = priority[a.id as keyof typeof priority] || 99
+        const prioB = priority[b.id as keyof typeof priority] || 99
+        return prioA - prioB
+      })
+      .map((i: any) => ({
+        id: i.id,
+        name: i.name,
+        icon: i.icon,
+        price: i.price,
+        description: i.description || '',
+        requiresFlavor: false
+      }))
   ]
   
-  const shouldLimit = (inventoryId: string) => {
-    if (orderType === 'today') return true
-    const item = inventory.find(i => i.id === inventoryId)
-    return globalLimitTomorrow || (item && !!item.limitTomorrow)
+  const getStock = (inventoryId: string) => {
+    return dailyInventory[inventoryId] || 0
   }
 
   // Customer Details
@@ -114,11 +126,10 @@ export default function Store() {
 
     const flavor = MUFFIN_FLAVORS.find(f => f.id === selectedFlavor)
     const inventoryId = product.requiresFlavor ? selectedFlavor : product.id
-    const inventoryItem = inventory.find(i => i.id === inventoryId)
-    const isLimited = shouldLimit(inventoryId)
+    const currentStock = getStock(inventoryId)
 
-    // Para pedidos con límite, validar stock.
-    if (isLimited && (!inventoryItem || inventoryItem.stock <= 0)) {
+    // Validar stock si no es ilimitado.
+    if (!isUnlimitedDay && currentStock <= 0) {
       toast.error('Lo sentimos, este producto se ha agotado para este periodo.')
       return
     }
@@ -128,8 +139,9 @@ export default function Store() {
     setCart(prev => {
       const existing = prev.find(item => item.id === cartItemId)
       if (existing) {
-        if (isLimited && inventoryItem && existing.quantity + 1 > inventoryItem.stock) {
-          toast.error(`Solo quedan ${inventoryItem.stock} disponibles.`)
+        const currentStock = getStock(inventoryId)
+        if (!isUnlimitedDay && existing.quantity + 1 > currentStock) {
+          toast.error(`Solo quedan ${currentStock} disponibles.`)
           return prev
         }
         return prev.map(item =>
@@ -165,12 +177,11 @@ export default function Store() {
   const updateQuantity = (id: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
-        const inventoryItem = inventory.find(i => i.id === item.inventoryId)
+        const currentStock = getStock(item.inventoryId)
         const newQty = item.quantity + delta
-        const isLimited = shouldLimit(item.inventoryId)
         
-        if (isLimited && delta > 0 && inventoryItem && newQty > inventoryItem.stock) {
-          toast.error(`Solo quedan ${inventoryItem.stock} disponibles.`)
+        if (!isUnlimitedDay && delta > 0 && newQty > currentStock) {
+          toast.error(`Solo quedan ${currentStock} disponibles.`)
           return item
         }
         
@@ -198,33 +209,39 @@ export default function Store() {
     const toastId = toast.loading('Procesando orden...')
 
     try {
-      // Usar transacción para verificar stock y decrementar
+      // Usar transacción para verificar stock y decrementar en daily_inventory
       await runTransaction(db, async (transaction) => {
-        const itemsToLimit = cart.filter(item => shouldLimit(item.inventoryId))
-        let inventorySnapshots: any[] = []
+        const dailyInventoryRef = doc(db, 'daily_inventory', deliveryDate)
+        const dailyInventorySnap = await transaction.get(dailyInventoryRef)
+        const isToday = deliveryDate === formatDateId(new Date())
+        
+        let isUnlimited = !isToday // Por defecto ilimitado si no es hoy
+        let currentStocks = {}
 
-        if (itemsToLimit.length > 0) {
-          inventorySnapshots = await Promise.all(
-            itemsToLimit.map(item => transaction.get(doc(db, 'inventory', item.inventoryId)))
-          )
+        if (dailyInventorySnap.exists()) {
+          currentStocks = dailyInventorySnap.data().stocks || {}
+          isUnlimited = !!dailyInventorySnap.data().isUnlimited
+        } else if (isToday) {
+          // Si es hoy y no hay registro, asumimos que no hay stock (o ya pasó la hora)
+          throw new Error('Lo sentimos, no hay inventario configurado para hoy.')
+        }
 
-          // Verificación de stock
-          for (let i = 0; i < itemsToLimit.length; i++) {
-            const item = itemsToLimit[i]
-            const snap = inventorySnapshots[i]
-            if (!snap.exists()) continue // O manejar error
-            const currentStock = snap.data().stock
-            if (currentStock < item.quantity) {
-              throw new Error(`¡Ups! Stock insuficiente para "${item.flavorName || item.name}". Solo quedan ${currentStock}.`)
-            }
+        const newStocks = { ...currentStocks }
+
+        // Verificación de stock
+        for (const item of cart) {
+          const available = currentStocks[item.inventoryId] || 0
+          if (!isUnlimited && available < item.quantity) {
+            throw new Error(`¡Ups! Stock insuficiente para "${item.flavorName || item.name}". Solo quedan ${available}.`)
           }
+          if (!isUnlimited) {
+            newStocks[item.inventoryId] = available - item.quantity
+          }
+        }
 
-          // Decrementar stock
-          itemsToLimit.forEach((item, idx) => {
-            const snap = inventorySnapshots[idx]
-            const newStock = snap.data().stock - item.quantity
-            transaction.update(doc(db, 'inventory', item.inventoryId), { stock: newStock })
-          })
+        // Decrementar stock solo si no es ilimitado
+        if (!isUnlimited) {
+          transaction.update(dailyInventoryRef, { stocks: newStocks })
         }
 
         // Crear orden
@@ -237,7 +254,7 @@ export default function Store() {
           total,
           status: 'nuevo',
           isPaid: false,
-          orderType, // 'today' | 'tomorrow'
+          deliveryDate,
           createdAt: serverTimestamp()
         }
         
@@ -307,29 +324,27 @@ export default function Store() {
         <p>Los mejores postres caseros a tu alcance {String.fromCodePoint(0x1F9C1)}</p>
       </header>
 
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', padding: '0.5rem', background: 'var(--surface)', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-        <button 
-          onClick={() => handleOrderTypeChange('today')}
-          style={{ 
-            flex: 1, padding: '0.8rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
-            background: orderType === 'today' ? 'var(--primary)' : 'transparent',
-            color: orderType === 'today' ? 'white' : 'var(--text)',
-            fontWeight: 600, transition: 'all 0.2s'
-          }}
-        >
-          🔥 Disponible Hoy
-        </button>
-        <button 
-          onClick={() => handleOrderTypeChange('tomorrow')}
-          style={{ 
-            flex: 1, padding: '0.8rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
-            background: orderType === 'tomorrow' ? 'var(--primary)' : 'transparent',
-            color: orderType === 'tomorrow' ? 'white' : 'var(--text)',
-            fontWeight: 600, transition: 'all 0.2s'
-          }}
-        >
-          📅 Pedido para Mañana
-        </button>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', padding: '0.5rem', background: 'var(--surface)', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+        {availableDates.map(date => {
+          const id = formatDateId(date)
+          const isSelected = deliveryDate === id
+          return (
+            <button 
+              key={id}
+              onClick={() => handleDateChange(id)}
+              style={{ 
+                flex: '0 0 auto', padding: '0.8rem 1.2rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                background: isSelected ? 'var(--primary)' : 'transparent',
+                color: isSelected ? 'white' : 'var(--text)',
+                fontWeight: 600, transition: 'all 0.2s',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
+                minWidth: '85px'
+              }}
+            >
+              {formatDisplayDate(date)}
+            </button>
+          )
+        })}
       </div>
 
       <div className="grid">
@@ -354,10 +369,10 @@ export default function Store() {
                 >
                   <option value="" disabled>Selecciona un sabor...</option>
                   {MUFFIN_FLAVORS.map(flavor => {
-                    const isLimited = shouldLimit(flavor.id)
+                    const stock = getStock(flavor.id)
                     return (
-                      <option key={flavor.id} value={flavor.id} disabled={isLimited && flavor.stock <= 0}>
-                        {flavor.icon} {flavor.name} {isLimited ? (flavor.stock <= 0 ? '(AGOTADO)' : `(${flavor.stock} disponibles)`) : ''}
+                      <option key={flavor.id} value={flavor.id} disabled={!isUnlimitedDay && stock <= 0}>
+                        {flavor.icon} {flavor.name} {!isUnlimitedDay ? (stock <= 0 ? '(AGOTADO)' : `(${stock} disponibles)`) : ''}
                       </option>
                     )
                   })}
@@ -366,13 +381,12 @@ export default function Store() {
               
               {(() => {
                 const inventoryId = product.requiresFlavor ? selectedFlavor : product.id
-                const invItem = inventory.find(i => i.id === inventoryId)
-                const isLimited = shouldLimit(inventoryId)
-                const isOutOfStock = isLimited && invItem && invItem.stock <= 0
+                const stock = getStock(inventoryId)
+                const isOutOfStock = !isUnlimitedDay && stock <= 0
                 
                 return (
                   <>
-                    {isOutOfStock && (
+                    {!isUnlimitedDay && isOutOfStock && product.id !== 'muffin_platano' && (
                       <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <AlertCircle size={14} /> Producto temporalmente agotado
                       </div>
@@ -380,10 +394,10 @@ export default function Store() {
                     <button 
                       className="add-btn" 
                       onClick={() => handleAddToCart(product)}
-                      disabled={(product.requiresFlavor && !selectedFlavor) || isOutOfStock}
-                      style={{ opacity: isOutOfStock ? 0.6 : 1 }}
+                      disabled={(product.requiresFlavor && !selectedFlavor) || (!isUnlimitedDay && inventoryId !== "" && isOutOfStock)}
+                      style={{ opacity: !isUnlimitedDay && isOutOfStock && inventoryId !== "" ? 0.6 : 1 }}
                     >
-                      <span>{String.fromCodePoint(0x2795)}</span> {isOutOfStock ? 'Agotado' : 'Agregar al carrito'}
+                      <span>{String.fromCodePoint(0x2795)}</span> {!isUnlimitedDay && isOutOfStock && inventoryId !== "" ? 'Agotado' : 'Agregar al carrito'}
                     </button>
                   </>
                 )

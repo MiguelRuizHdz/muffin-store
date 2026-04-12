@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { collection, onSnapshot, query, orderBy, doc, getDocs, updateDoc, setDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
-import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2, List, MessageCircle, Plus, Minus, Info } from 'lucide-react'
+import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2, List, MessageCircle, Plus, Minus, Info, Calendar, AlertCircle } from 'lucide-react'
 import { Scanner } from '@yudiel/react-qr-scanner'
+import { getNextBusinessDays, formatDateId, formatDisplayDate } from '../utils/dates'
 
 interface OrderItem {
   id: string
@@ -25,6 +26,7 @@ interface Order {
   status: 'nuevo' | 'cocinando' | 'empaque' | 'entregado'
   isPaid: boolean
   orderType?: 'today' | 'tomorrow'
+  deliveryDate?: string
   createdAt: any
 }
 
@@ -54,6 +56,18 @@ export default function Admin() {
   const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null)
   const [editStockValue, setEditStockValue] = useState<string>('')
   const [editPriceValue, setEditPriceValue] = useState<string>('')
+
+  const [availableDates] = useState(() => getNextBusinessDays(5))
+  const [selectedInventoryDate, setSelectedInventoryDate] = useState(formatDateId(new Date()))
+  const [dailyInventory, setDailyInventory] = useState<Record<string, number>>({})
+  const [isUnlimitedDay, setIsUnlimitedDay] = useState(false)
+  
+  const [showNewItemForm, setShowNewItemForm] = useState(false)
+  const [newItemName, setNewItemName] = useState('')
+  const [newItemType, setNewItemType] = useState<'flavor' | 'product'>('product')
+  const [newItemPrice, setNewItemPrice] = useState('15')
+  const [newItemIcon, setNewItemIcon] = useState('🥜')
+  const [newItemDescription, setNewItemDescription] = useState('')
 
   // 1. Fetch password settings
   useEffect(() => {
@@ -138,6 +152,33 @@ export default function Admin() {
     })
     return () => unsubscribe()
   }, [isLoggedIn])
+
+  // 2.5.1 Auto-sync base products if missing
+  useEffect(() => {
+    if (isLoggedIn && role === 'admin' && inventory.length > 0) {
+      const hasCacahuates = inventory.some(i => i.id === 'product_cacahuates')
+      const hasDescriptions = inventory.some(i => i.type === 'product' && i.description)
+      if (!hasCacahuates || !hasDescriptions) {
+        console.log("Cargando productos base faltantes...")
+        initializeInventory()
+      }
+    }
+  }, [isLoggedIn, role, inventory.length])
+
+  // 2.6 Fetch daily inventory
+  useEffect(() => {
+    if (!isLoggedIn) return
+    const unsub = onSnapshot(doc(db, 'daily_inventory', selectedInventoryDate), (d) => {
+      if (d.exists()) {
+        setDailyInventory(d.data().stocks || {})
+        setIsUnlimitedDay(!!d.data().isUnlimited)
+      } else {
+        setDailyInventory({})
+        setIsUnlimitedDay(false)
+      }
+    })
+    return () => unsub()
+  }, [isLoggedIn, selectedInventoryDate])
 
   // 3. Fetch logs
   useEffect(() => {
@@ -238,8 +279,7 @@ export default function Admin() {
   }
 
   const initializeInventory = async () => {
-    if (inventory.length > 0) return
-    const toastId = toast.loading('Inicializando inventario...')
+    const toastId = toast.loading('Sincronizando productos base...')
     try {
       const batch = writeBatch(db)
       
@@ -250,24 +290,30 @@ export default function Admin() {
         { id: 'flavor_chispas', name: 'Chispas de chocolate', type: 'flavor', icon: '🍫', stock: 0 },
         { id: 'flavor_nutella', name: 'Nutella', type: 'flavor', icon: '🍫✨', stock: 0 },
         { id: 'flavor_goober', name: 'Goober (fresa con cacahuate)', type: 'flavor', icon: '🍓🥜', stock: 0 },
-        { id: 'product_mini_pays', name: 'Mini pays de queso', type: 'product', icon: '🧀', stock: 0, price: 15 }
+        { id: 'product_mini_pays', name: 'Mini pays de queso', type: 'product', icon: '🧀', stock: 0, price: 15, description: '2 por $15 (1 bolsa incluye 2 pays)' },
+        { id: 'product_cacahuates', name: 'Bolsa de cacahuates japoneses', type: 'product', icon: '🥜', stock: 0, price: 15, description: 'Contiene bolsa de salsa botanera' }
       ]
 
       items.forEach(item => {
         const ref = doc(db, 'inventory', item.id)
-        batch.set(ref, item)
+        batch.set(ref, item, { merge: true }) // Merge for safety
       })
 
       await batch.commit()
-      toast.success('Inventario inicializado', { id: toastId })
+      toast.success('Productos base cargados correctamente', { id: toastId })
     } catch (error) {
-      toast.error('Error al inicializar inventario', { id: toastId })
+      toast.error('Error al sincronizar productos', { id: toastId })
     }
   }
 
   const updateInventoryValue = async (id: string, field: 'stock' | 'price', value: number) => {
     try {
-      await updateDoc(doc(db, 'inventory', id), { [field]: value })
+      if (field === 'stock') {
+        const newDaily = { ...dailyInventory, [id]: value }
+        await setDoc(doc(db, 'daily_inventory', selectedInventoryDate), { stocks: newDaily }, { merge: true })
+      } else {
+        await updateDoc(doc(db, 'inventory', id), { [field]: value })
+      }
       toast.success('Inventario actualizado')
       setEditingInventoryId(null)
     } catch (e) {
@@ -278,7 +324,8 @@ export default function Admin() {
   const adjustStock = async (id: string, current: number, delta: number) => {
     const newVal = Math.max(0, current + delta)
     try {
-      await updateDoc(doc(db, 'inventory', id), { stock: newVal })
+      const newDaily = { ...dailyInventory, [id]: newVal }
+      await setDoc(doc(db, 'daily_inventory', selectedInventoryDate), { stocks: newDaily }, { merge: true })
     } catch (e) {
       toast.error('Error al ajustar stock')
     }
@@ -299,6 +346,46 @@ export default function Admin() {
       toast.success('Pre-pedido actualizado')
     } catch (e) {
       toast.error('Error al actualizar')
+    }
+  }
+
+  const toggleDailyUnlimited = async () => {
+    try {
+      await setDoc(doc(db, 'daily_inventory', selectedInventoryDate), { isUnlimited: !isUnlimitedDay }, { merge: true })
+      toast.success(`Modo ${!isUnlimitedDay ? 'Ilimitado' : 'Limitado'} activado`)
+    } catch (e) {
+      toast.error('Error al actualizar')
+    }
+  }
+
+  const addNewItem = async () => {
+    if (!newItemName) return toast.error('Nombre requerido')
+    // Generate clean ID from name
+    const id = newItemName.toLowerCase()
+      .trim()
+      .replace(/\s+/g, '_')
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9_]/g, '')
+    
+    try {
+      const fullId = `${newItemType === 'flavor' ? 'flavor_' : 'product_'}${id}`
+      const item = {
+        id: fullId,
+        name: newItemName,
+        type: newItemType,
+        icon: newItemIcon || (newItemType === 'flavor' ? '🍩' : '📦'),
+        price: newItemType === 'product' ? parseInt(newItemPrice) : 0,
+        description: newItemDescription,
+        stock: 0
+      }
+      await setDoc(doc(db, 'inventory', fullId), item)
+      toast.success('Producto agregado con éxito')
+      setShowNewItemForm(false)
+      setNewItemName('')
+      setNewItemDescription('')
+    } catch (e) {
+      toast.error('Error al agregar')
     }
   }
 
@@ -503,30 +590,104 @@ export default function Admin() {
       )}
 
       {activeTab === 'inventory' ? (
-        <div style={{ paddingBottom: '2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem', background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-            <div>
-              <h2 style={{ margin: 0 }}>Gestión de Inventario</h2>
-              <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>Controla los niveles de stock y disponibilidad diaria.</p>
+        <>
+          <div style={{ paddingBottom: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem', background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+              <div>
+                <h2 style={{ margin: 0 }}>Gestión de Inventario</h2>
+                <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>Controla los niveles de stock y disponibilidad diaria.</p>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', background: 'var(--bg-dark)', padding: '0.25rem', borderRadius: '10px', gap: '0.25rem' }}>
+                    {availableDates.map(date => {
+                      const id = formatDateId(date)
+                      const isSelected = selectedInventoryDate === id
+                      return (
+                        <button
+                          key={id}
+                          onClick={() => setSelectedInventoryDate(id)}
+                          style={{
+                            padding: '0.5rem 0.8rem',
+                            borderRadius: '8px',
+                            border: 'none',
+                            background: isSelected ? 'var(--primary)' : 'transparent',
+                            color: isSelected ? 'black' : 'var(--text-muted)',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          {formatDisplayDate(date)}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <button 
+                    onClick={toggleDailyUnlimited} 
+                    className={`limit-toggle ${isUnlimitedDay ? 'active' : 'inactive'}`}
+                    style={{ 
+                      background: isUnlimitedDay ? 'rgba(37, 211, 102, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                      color: isUnlimitedDay ? '#25D366' : '#ef4444',
+                      borderColor: isUnlimitedDay ? 'rgba(37, 211, 102, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+                      padding: '0.6rem 1rem',
+                      borderRadius: '8px',
+                      borderWidth: '1px',
+                      borderStyle: 'solid',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {isUnlimitedDay ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+                    {isUnlimitedDay ? 'Pedidos Ilimitados' : 'Stock Limitado'}
+                  </button>
+                  <button 
+                    onClick={() => setShowNewItemForm(!showNewItemForm)} 
+                    className="add-btn" 
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                  >
+                    <Plus size={16} /> Nuevo
+                  </button>
+                  <button onClick={initializeInventory} className="add-btn" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#4A5568' }}>
+                    <Package size={16} /> Cargar Productos Base
+                  </button>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <button 
-                  onClick={toggleGlobalLimit} 
-                  className="limit-toggle active"
-                  style={{ 
-                    background: globalLimitTomorrow ? 'rgba(239, 68, 68, 0.1)' : 'rgba(37, 211, 102, 0.1)',
-                    color: globalLimitTomorrow ? '#ef4444' : '#25D366',
-                    borderColor: globalLimitTomorrow ? 'rgba(239, 68, 68, 0.2)' : 'rgba(37, 211, 102, 0.2)',
-                  }}
-               >
-                 {globalLimitTomorrow ? <Package size={16} /> : <CheckCircle size={16} />}
-                 {globalLimitTomorrow ? 'Stock Limitado (Mañana)' : 'Todo Disponible (Mañana)'}
-               </button>
-               {inventory.length === 0 && (
-                 <button onClick={initializeInventory} className="add-btn">Inicializar Productos</button>
-               )}
+
+            {showNewItemForm && (
+              <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '1px solid var(--primary)' }}>
+                <div style={{ flex: '1 1 200px' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>NOMBRE</label>
+                  <input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Ej: Bolsa de cacahuates" style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} />
+                </div>
+              <div style={{ flex: '1 1 120px' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>TIPO</label>
+                <select value={newItemType} onChange={e => setNewItemType(e.target.value as any)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }}>
+                  <option value="product">Producto (Pay/Botana)</option>
+                  <option value="flavor">Sabor de Muffin</option>
+                </select>
+              </div>
+              <div style={{ width: '60px' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>ICONO</label>
+                <input type="text" value={newItemIcon} onChange={e => setNewItemIcon(e.target.value)} placeholder="🥜" style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', textAlign: 'center' }} />
+              </div>
+              {newItemType === 'product' && (
+                <div style={{ width: '80px' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>PRECIO</label>
+                  <input type="number" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} />
+                </div>
+              )}
+              <div style={{ flex: '1 1 200px' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>DESCRIPCIÓN (Opcional)</label>
+                <input type="text" value={newItemDescription} onChange={e => setNewItemDescription(e.target.value)} placeholder="Ej: Contiene salsa" style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} />
+              </div>
+              <button onClick={addNewItem} className="add-btn" style={{ height: '42px', padding: '0 1.5rem' }}>Agregar</button>
             </div>
-          </div>
+          )}
 
           {[
             { title: 'Sabores de Muffin', items: inventory.filter(i => i.type === 'flavor'), icon: <Info size={18} /> },
@@ -566,17 +727,17 @@ export default function Admin() {
 
                     <div className="stock-control">
                       <div>
-                        <div className="stock-label">STOCK ACTUAL</div>
+                        <div className="stock-label">STOCK {formatDisplayDate(new Date(selectedInventoryDate + 'T12:00:00'))}</div>
                         <div className="stock-value">
-                          {item.stock}
-                          <span className={`stock-badge ${item.stock <= 5 ? 'low' : 'healthy'}`}>
-                            {item.stock === 0 ? 'Agotado' : (item.stock <= 5 ? 'Bajo' : 'OK')}
+                          {dailyInventory[item.id] || 0}
+                          <span className={`stock-badge ${(dailyInventory[item.id] || 0) <= 5 ? 'low' : 'healthy'}`}>
+                            {(dailyInventory[item.id] || 0) === 0 ? 'Agotado' : ((dailyInventory[item.id] || 0) <= 5 ? 'Bajo' : 'OK')}
                           </span>
                         </div>
                       </div>
                       <div className="stock-adjusters">
-                        <button onClick={() => adjustStock(item.id, item.stock, -1)} className="adjust-btn"><Minus size={16} /></button>
-                        <button onClick={() => adjustStock(item.id, item.stock, 1)} className="adjust-btn"><Plus size={16} /></button>
+                        <button onClick={() => adjustStock(item.id, dailyInventory[item.id] || 0, -1)} className="adjust-btn"><Minus size={16} /></button>
+                        <button onClick={() => adjustStock(item.id, dailyInventory[item.id] || 0, 1)} className="adjust-btn"><Plus size={16} /></button>
                       </div>
                     </div>
 
@@ -629,22 +790,14 @@ export default function Admin() {
                           </span>
                         )}
                       </div>
-                      <button 
-                        onClick={() => toggleIndividualLimit(item.id, !!item.limitTomorrow)}
-                        disabled={globalLimitTomorrow}
-                        className={`limit-toggle ${item.limitTomorrow || globalLimitTomorrow ? 'active' : 'inactive'}`}
-                        style={{ opacity: globalLimitTomorrow ? 0.6 : 1 }}
-                      >
-                        {item.limitTomorrow || globalLimitTomorrow ? <Package size={14} /> : <CheckCircle size={14} />}
-                        {item.limitTomorrow || globalLimitTomorrow ? 'Limitado' : 'Libre'}
-                      </button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        </>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
         {filteredOrders.map(order => {
@@ -685,9 +838,9 @@ export default function Admin() {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
                 {getStatusBadge(order.status)}
-                {order.orderType === 'tomorrow' && (
-                  <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '0.65rem', fontWeight: 800, padding: '0.1rem 0.4rem', borderRadius: '4px', border: '1px solid #fcd34d' }}>
-                    📅 MAÑANA
+                {order.deliveryDate && (
+                  <span style={{ background: '#fef3c7', color: '#d97706', fontSize: '0.65rem', fontWeight: 800, padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid #fcd34d', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Calendar size={12} /> {formatDisplayDate(new Date(order.deliveryDate + 'T12:00:00'))}
                   </span>
                 )}
               </div>
