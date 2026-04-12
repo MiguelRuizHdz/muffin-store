@@ -51,7 +51,6 @@ export default function Admin() {
   const [newCocinaPassword, setNewCocinaPassword] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [isScanning, setIsScanning] = useState(false)
-  const [globalLimitTomorrow, setGlobalLimitTomorrow] = useState(false)
 
   const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null)
   const [editStockValue, setEditStockValue] = useState<string>('')
