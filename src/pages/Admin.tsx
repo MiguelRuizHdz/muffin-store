@@ -145,8 +145,7 @@ export default function Admin() {
       const hasCacahuates = inventory.some(i => i.id === 'product_cacahuates')
       const hasDescriptions = inventory.some(i => i.type === 'product' && i.description)
       if (!hasCacahuates || !hasDescriptions) {
-        console.log("Cargando productos base faltantes...")
-        initializeInventory()
+        initializeInventory(true)
       }
     }
   }, [isLoggedIn, role, inventory.length])
@@ -301,8 +300,9 @@ export default function Admin() {
     }
   }
 
-  const initializeInventory = async () => {
-    const toastId = toast.loading('Sincronizando productos base...')
+  const initializeInventory = async (silent = false) => {
+    let toastId: string | undefined
+    if (!silent) toastId = toast.loading('Sincronizando productos base...')
     try {
       const batch = writeBatch(db)
       
@@ -324,9 +324,9 @@ export default function Admin() {
       })
 
       await batch.commit()
-      toast.success('Productos base cargados correctamente', { id: toastId })
+      if (!silent) toast.success('Productos base cargados correctamente', { id: toastId })
     } catch (error) {
-      toast.error('Error al sincronizar productos', { id: toastId })
+      if (!silent) toast.error('Error al sincronizar productos', { id: toastId })
     }
   }
 
