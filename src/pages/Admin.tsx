@@ -55,6 +55,7 @@ export default function Admin() {
   const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null)
   const [editStockValue, setEditStockValue] = useState<string>('')
   const [editPriceValue, setEditPriceValue] = useState<string>('')
+  const [editDescriptionValue, setEditDescriptionValue] = useState<string>('')
 
   const [visibleDays, setVisibleDays] = useState(5)
   const [availableDates, setAvailableDates] = useState<Date[]>(() => getNextBusinessDays(5))
@@ -155,8 +156,9 @@ export default function Admin() {
   useEffect(() => {
     if (isLoggedIn && role === 'admin' && inventory.length > 0) {
       const hasCacahuates = inventory.some(i => i.id === 'product_cacahuates')
+      const hasGalletas = inventory.some(i => i.id === 'product_galleta_doble_chocolate')
       const hasDescriptions = inventory.some(i => i.type === 'product' && i.description)
-      if (!hasCacahuates || !hasDescriptions) {
+      if (!hasCacahuates || !hasDescriptions || !hasGalletas) {
         initializeInventory(true)
       }
     }
@@ -300,7 +302,7 @@ export default function Admin() {
     }
   }
 
-  const updateInventoryValue = async (id: string, field: 'stock' | 'price', value: number) => {
+  const updateInventoryValue = async (id: string, field: 'stock' | 'price' | 'description', value: number | string) => {
     try {
       if (field === 'stock') {
         const newDaily = { ...dailyInventory, [id]: value }
@@ -340,7 +342,9 @@ export default function Admin() {
         { id: 'flavor_goober', name: 'Goober (fresa con cacahuate)', type: 'flavor', icon: '🍓🥜', stock: 0 },
         { id: 'product_muffin_base', name: 'Muffins de plátano', type: 'product', icon: '🍌', stock: 0, price: 15, description: 'Precio base del muffin' },
         { id: 'product_mini_pays', name: 'Mini pays de queso', type: 'product', icon: '🧀', stock: 0, price: 15, description: '2 por $15 (1 bolsa incluye 2 pays)' },
-        { id: 'product_cacahuates', name: 'Bolsa de cacahuates japoneses', type: 'product', icon: '🥜', stock: 0, price: 15, description: 'Contiene bolsa de salsa botanera' }
+        { id: 'product_cacahuates', name: 'Bolsa de cacahuates japoneses', type: 'product', icon: '🥜', stock: 0, price: 15, description: 'Contiene bolsa de salsa botanera' },
+        { id: 'product_galleta_doble_chocolate', name: 'Galleta doble chocolate', type: 'product', icon: '🍪', stock: 0, price: 15, description: 'Galleta de chispas de chocolate (doble chocolate)' },
+        { id: 'product_galleta_triple_mm', name: 'Galleta triple chocolate con M&Ms', type: 'product', icon: '🍪🌈', stock: 0, price: 15, description: 'Galleta triple chocolate con M&Ms' }
       ]
 
       items.forEach(item => {
@@ -961,6 +965,7 @@ export default function Admin() {
                                 setEditingInventoryId(item.id)
                                 setEditStockValue(item.stock.toString())
                                 setEditPriceValue((item.price || 0).toString())
+                                setEditDescriptionValue(item.description || '')
                               }
                             }}
                             className="adjust-btn"
@@ -1014,8 +1019,8 @@ export default function Admin() {
 
                     {editingInventoryId === item.id && (
                       <div style={{ background: 'var(--bg-dark)', padding: '1rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        <div style={{ display: 'flex', gap: '1rem' }}>
-                          <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                          <div style={{ flex: '1 1 80px', minWidth: '80px' }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>STOCK MANUAL</label>
                             <input 
                               type="number" 
@@ -1025,7 +1030,7 @@ export default function Admin() {
                             />
                           </div>
                           {role === 'admin' && item.type === 'product' && (
-                            <div style={{ flex: 1 }}>
+                            <div style={{ flex: '1 1 80px', minWidth: '80px' }}>
                               <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>PRECIO $</label>
                               <input 
                                 type="number" 
@@ -1036,11 +1041,24 @@ export default function Admin() {
                             </div>
                           )}
                         </div>
+                        {role === 'admin' && item.type === 'product' && (
+                          <div>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>DESCRIPCIÓN</label>
+                            <input 
+                              type="text" 
+                              value={editDescriptionValue} 
+                              onChange={e => setEditDescriptionValue(e.target.value)}
+                              placeholder="Ej: 2 por $15, incluye salsa, etc."
+                              style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }}
+                            />
+                          </div>
+                        )}
                         <button 
                           onClick={() => {
                             updateInventoryValue(item.id, 'stock', parseInt(editStockValue))
                             if (role === 'admin' && item.type === 'product') {
                               updateInventoryValue(item.id, 'price', parseInt(editPriceValue))
+                              updateInventoryValue(item.id, 'description', editDescriptionValue)
                             }
                           }}
                           className="add-btn" 
