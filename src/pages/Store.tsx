@@ -36,6 +36,7 @@ export default function Store() {
   const [availableDates] = useState(() => getNextBusinessDays(5))
   const [deliveryDate, setDeliveryDate] = useState(formatDateId(new Date()))
   const [dailyInventory, setDailyInventory] = useState<Record<string, number>>({})
+  const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
   const [isUnlimitedDay, setIsUnlimitedDay] = useState(false)
   
   // Real-time inventory
@@ -52,10 +53,13 @@ export default function Store() {
     const unsub = onSnapshot(doc(db, 'daily_inventory', deliveryDate), (d) => {
       const isToday = deliveryDate === formatDateId(new Date())
       if (d.exists()) {
-        setDailyInventory(d.data().stocks || {})
-        setIsUnlimitedDay(!!d.data().isUnlimited)
+        const data = d.data()
+        setDailyInventory(data.stocks || {})
+        setIsUnlimitedDay(!!data.isUnlimited)
+        setUnlimitedItems(data.unlimitedItems || [])
       } else {
         setDailyInventory({})
+        setUnlimitedItems([])
         // Si no existe el registro, los días futuros son ilimitados por defecto
         setIsUnlimitedDay(!isToday)
       }
@@ -217,10 +221,13 @@ export default function Store() {
         
         let isUnlimited = !isToday // Por defecto ilimitado si no es hoy
         let currentStocks: Record<string, number> = {}
+        let unlimitedItemsList: string[] = []
 
         if (dailyInventorySnap.exists()) {
-          currentStocks = dailyInventorySnap.data().stocks || {}
-          isUnlimited = !!dailyInventorySnap.data().isUnlimited
+          const data = dailyInventorySnap.data()
+          currentStocks = data.stocks || {}
+          isUnlimited = !!data.isUnlimited
+          unlimitedItemsList = data.unlimitedItems || []
         } else if (isToday) {
           // Si es hoy y no hay registro, asumimos que no hay stock (o ya pasó la hora)
           throw new Error('Lo sentimos, no hay inventario configurado para hoy.')
@@ -231,10 +238,12 @@ export default function Store() {
         // Verificación de stock
         for (const item of cart) {
           const available = currentStocks[item.inventoryId] || 0
-          if (!isUnlimited && available < item.quantity) {
+          const itemIsUnlimited = isUnlimited || unlimitedItemsList.includes(item.inventoryId)
+          
+          if (!itemIsUnlimited && available < item.quantity) {
             throw new Error(`¡Ups! Stock insuficiente para "${item.flavorName || item.name}". Solo quedan ${available}.`)
           }
-          if (!isUnlimited) {
+          if (!itemIsUnlimited) {
             newStocks[item.inventoryId] = available - item.quantity
           }
         }
@@ -370,9 +379,10 @@ export default function Store() {
                   <option value="" disabled>Selecciona un sabor...</option>
                   {MUFFIN_FLAVORS.map(flavor => {
                     const stock = getStock(flavor.id)
+                    const itemIsUnlimited = isUnlimitedDay || unlimitedItems.includes(flavor.id)
                     return (
-                      <option key={flavor.id} value={flavor.id} disabled={!isUnlimitedDay && stock <= 0}>
-                        {flavor.icon} {flavor.name} {!isUnlimitedDay ? (stock <= 0 ? '(AGOTADO)' : `(${stock} disponibles)`) : ''}
+                      <option key={flavor.id} value={flavor.id} disabled={!itemIsUnlimited && stock <= 0}>
+                        {flavor.icon} {flavor.name} {!itemIsUnlimited ? (stock <= 0 ? '(AGOTADO)' : `(${stock} disponibles)`) : '(Ilimitado)'}
                       </option>
                     )
                   })}
@@ -382,11 +392,12 @@ export default function Store() {
               {(() => {
                 const inventoryId = product.requiresFlavor ? selectedFlavor : product.id
                 const stock = getStock(inventoryId)
-                const isOutOfStock = !isUnlimitedDay && stock <= 0
+                const itemIsUnlimited = isUnlimitedDay || (inventoryId !== "" && unlimitedItems.includes(inventoryId))
+                const isOutOfStock = !itemIsUnlimited && stock <= 0
                 
                 return (
                   <>
-                    {!isUnlimitedDay && isOutOfStock && product.id !== 'muffin_platano' && (
+                    {!itemIsUnlimited && isOutOfStock && inventoryId !== "" && (
                       <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                         <AlertCircle size={14} /> Producto temporalmente agotado
                       </div>
@@ -394,10 +405,10 @@ export default function Store() {
                     <button 
                       className="add-btn" 
                       onClick={() => handleAddToCart(product)}
-                      disabled={(product.requiresFlavor && !selectedFlavor) || (!isUnlimitedDay && inventoryId !== "" && isOutOfStock)}
-                      style={{ opacity: !isUnlimitedDay && isOutOfStock && inventoryId !== "" ? 0.6 : 1 }}
+                      disabled={(product.requiresFlavor && !selectedFlavor) || (!isUnlimitedDay && !unlimitedItems.includes(inventoryId) && inventoryId !== "" && isOutOfStock)}
+                      style={{ opacity: !(isUnlimitedDay || unlimitedItems.includes(inventoryId)) && isOutOfStock && inventoryId !== "" ? 0.6 : 1 }}
                     >
-                      <span>{String.fromCodePoint(0x2795)}</span> {!isUnlimitedDay && isOutOfStock && inventoryId !== "" ? 'Agotado' : 'Agregar al carrito'}
+                      <span>{String.fromCodePoint(0x2795)}</span> {!(isUnlimitedDay || unlimitedItems.includes(inventoryId)) && isOutOfStock && inventoryId !== "" ? 'Agotado' : 'Agregar al carrito'}
                     </button>
                   </>
                 )

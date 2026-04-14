@@ -58,6 +58,7 @@ export default function Admin() {
 
   const [availableDates] = useState(() => getNextBusinessDays(5))
   const [selectedInventoryDate, setSelectedInventoryDate] = useState(formatDateId(new Date()))
+  const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
   const [dailyInventory, setDailyInventory] = useState<Record<string, number>>({})
   const [isUnlimitedDay, setIsUnlimitedDay] = useState(false)
   
@@ -159,9 +160,11 @@ export default function Admin() {
         const currentStocks: Record<string, number> = data.stocks || {}
         setDailyInventory(currentStocks)
         setIsUnlimitedDay(!!data.isUnlimited)
+        setUnlimitedItems(data.unlimitedItems || [])
       } else {
         setDailyInventory({})
         setIsUnlimitedDay(false)
+        setUnlimitedItems([])
       }
     })
     return () => unsub()
@@ -330,12 +333,17 @@ export default function Admin() {
     }
   }
 
-  const toggleDailyUnlimited = async () => {
+  const toggleItemUnlimited = async (itemId: string) => {
     try {
-      await setDoc(doc(db, 'daily_inventory', selectedInventoryDate), { isUnlimited: !isUnlimitedDay }, { merge: true })
-      toast.success(`Modo ${!isUnlimitedDay ? 'Ilimitado' : 'Limitado'} activado`)
+      const isCurrentlyUnlimited = unlimitedItems.includes(itemId)
+      const newUnlimited = isCurrentlyUnlimited 
+        ? unlimitedItems.filter(id => id !== itemId)
+        : [...unlimitedItems, itemId]
+      
+      await setDoc(doc(db, 'daily_inventory', selectedInventoryDate), { unlimitedItems: newUnlimited }, { merge: true })
+      toast.success(isCurrentlyUnlimited ? 'Stock ahora es manual' : 'Producto marcado como ilimitado')
     } catch (e) {
-      toast.error('Error al actualizar')
+      toast.error('Error al cambiar modo de stock')
     }
   }
 
@@ -573,13 +581,66 @@ export default function Admin() {
       {activeTab === 'inventory' ? (
         <>
           <div style={{ paddingBottom: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem', background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-              <div>
-                <h2 style={{ margin: 0 }}>Gestión de Inventario</h2>
-                <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>Controla los niveles de stock y disponibilidad diaria.</p>
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '1.5rem', 
+              background: 'var(--bg-card)', 
+              padding: '1.5rem', 
+              borderRadius: '12px', 
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+              marginBottom: '1.5rem'
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                flexWrap: 'wrap', 
+                gap: '1rem' 
+              }}>
+                <div>
+                  <h2 style={{ margin: 0 }}>Gestión de Inventario</h2>
+                  <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>Controla los niveles de stock y disponibilidad diaria.</p>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <button 
+                    onClick={() => setShowNewItemForm(!showNewItemForm)} 
+                    className="add-btn" 
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem' }}
+                  >
+                    <Plus size={16} /> Nuevo
+                  </button>
+                  <button 
+                    onClick={initializeInventory} 
+                    className="add-btn" 
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#4A5568', padding: '0.6rem 1rem' }}
+                  >
+                    <Package size={16} /> Cargar Base
+                  </button>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', background: 'var(--bg-dark)', padding: '0.25rem', borderRadius: '10px', gap: '0.25rem' }}>
+
+              <div style={{ 
+                display: 'flex', 
+                gap: '1rem', 
+                alignItems: 'center', 
+                justifyContent: 'space-between', 
+                flexWrap: 'wrap',
+                borderTop: '1px solid var(--border-color)',
+                paddingTop: '1.5rem'
+              }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    background: 'var(--bg-dark)', 
+                    padding: '0.25rem', 
+                    borderRadius: '10px', 
+                    gap: '0.25rem',
+                    overflowX: 'auto',
+                    maxWidth: '100%',
+                    scrollbarWidth: 'none',
+                    WebkitOverflowScrolling: 'touch'
+                  }}>
                     {availableDates.map(date => {
                       const id = formatDateId(date)
                       const isSelected = selectedInventoryDate === id
@@ -596,7 +657,8 @@ export default function Admin() {
                             fontSize: '0.8rem',
                             fontWeight: 600,
                             cursor: 'pointer',
-                            transition: 'all 0.2s'
+                            whiteSpace: 'nowrap',
+                            minWidth: 'fit-content'
                           }}
                         >
                           {formatDisplayDate(date)}
@@ -604,6 +666,7 @@ export default function Admin() {
                       )
                     })}
                   </div>
+                  
                   <button 
                     onClick={toggleDailyUnlimited} 
                     className={`limit-toggle ${isUnlimitedDay ? 'active' : 'inactive'}`}
@@ -620,21 +683,12 @@ export default function Admin() {
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.5rem',
-                      transition: 'all 0.2s'
+                      transition: 'all 0.2s',
+                      flexShrink: 0
                     }}
                   >
                     {isUnlimitedDay ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-                    {isUnlimitedDay ? 'Pedidos Ilimitados' : 'Stock Limitado'}
-                  </button>
-                  <button 
-                    onClick={() => setShowNewItemForm(!showNewItemForm)} 
-                    className="add-btn" 
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-                  >
-                    <Plus size={16} /> Nuevo
-                  </button>
-                  <button onClick={initializeInventory} className="add-btn" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#4A5568' }}>
-                    <Package size={16} /> Cargar Productos Base
+                    {isUnlimitedDay ? 'Todo Ilimitado' : 'Stock Manual'}
                   </button>
               </div>
             </div>
@@ -707,19 +761,43 @@ export default function Admin() {
                     </div>
 
                     <div className="stock-control">
-                      <div>
-                        <div className="stock-label">STOCK {formatDisplayDate(new Date(selectedInventoryDate + 'T12:00:00'))}</div>
+                      <div style={{ flex: 1 }}>
+                        <div className="stock-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>STOCK {formatDisplayDate(new Date(selectedInventoryDate + 'T12:00:00'))}</span>
+                          <button 
+                            onClick={() => toggleItemUnlimited(item.id)}
+                            style={{ 
+                              background: unlimitedItems.includes(item.id) ? 'var(--primary)' : 'transparent',
+                              border: '1px solid var(--border-color)',
+                              color: unlimitedItems.includes(item.id) ? 'white' : 'var(--text-muted)',
+                              fontSize: '0.65rem',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {unlimitedItems.includes(item.id) ? 'ILIMITADO' : 'MANUAL'}
+                          </button>
+                        </div>
                         <div className="stock-value">
-                          {dailyInventory[item.id] || 0}
-                          <span className={`stock-badge ${(dailyInventory[item.id] || 0) <= 5 ? 'low' : 'healthy'}`}>
-                            {(dailyInventory[item.id] || 0) === 0 ? 'Agotado' : ((dailyInventory[item.id] || 0) <= 5 ? 'Bajo' : 'OK')}
-                          </span>
+                          {unlimitedItems.includes(item.id) ? (
+                            <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>∞ Ilimitado</span>
+                          ) : (
+                            <>
+                              {dailyInventory[item.id] || 0}
+                              <span className={`stock-badge ${(dailyInventory[item.id] || 0) <= 5 ? 'low' : 'healthy'}`}>
+                                {(dailyInventory[item.id] || 0) === 0 ? 'Agotado' : ((dailyInventory[item.id] || 0) <= 5 ? 'Bajo' : 'OK')}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
-                      <div className="stock-adjusters">
-                        <button onClick={() => adjustStock(item.id, dailyInventory[item.id] || 0, -1)} className="adjust-btn"><Minus size={16} /></button>
-                        <button onClick={() => adjustStock(item.id, dailyInventory[item.id] || 0, 1)} className="adjust-btn"><Plus size={16} /></button>
-                      </div>
+                      {!unlimitedItems.includes(item.id) && (
+                        <div className="stock-adjusters">
+                          <button onClick={() => adjustStock(item.id, dailyInventory[item.id] || 0, -1)} className="adjust-btn"><Minus size={16} /></button>
+                          <button onClick={() => adjustStock(item.id, dailyInventory[item.id] || 0, 1)} className="adjust-btn"><Plus size={16} /></button>
+                        </div>
+                      )}
                     </div>
 
                     {editingInventoryId === item.id && (
@@ -798,9 +876,16 @@ export default function Admin() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', paddingRight: isCocinaView ? '0' : '2rem' }}>
               <div>
-                <h3 style={{ margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h3 style={{ margin: '0 0 0.25rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                   {order.customerName}
-                  {order.shortId && <span style={{ fontSize: '0.8rem', background: '#e5e7eb', padding: '0.1rem 0.4rem', borderRadius: '4px', color: '#4b5563', fontFamily: 'monospace' }}>#{order.shortId}</span>}
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    {order.shortId && <span style={{ fontSize: '0.75rem', background: '#e5e7eb', padding: '0.1rem 0.4rem', borderRadius: '4px', color: '#4b5563', fontFamily: 'monospace' }}>#{order.shortId}</span>}
+                    {order.deliveryDate && (
+                      <span style={{ fontSize: '0.75rem', background: 'var(--primary)', color: 'white', padding: '0.1rem 0.4rem', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Calendar size={12} /> {formatDisplayDate(new Date(order.deliveryDate + 'T12:00:00'))}
+                      </span>
+                    )}
+                  </div>
                 </h3>
                 {!isCocinaView && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
