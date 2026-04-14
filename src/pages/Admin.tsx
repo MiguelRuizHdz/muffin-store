@@ -62,6 +62,7 @@ export default function Admin() {
   const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
   const [dailyInventory, setDailyInventory] = useState<Record<string, number>>({})
   const [isUnlimitedDay, setIsUnlimitedDay] = useState(false)
+  const [selectedDayHasConfig, setSelectedDayHasConfig] = useState(false)
   
   const [showNewItemForm, setShowNewItemForm] = useState(false)
   const [newItemName, setNewItemName] = useState('')
@@ -165,6 +166,7 @@ export default function Admin() {
   useEffect(() => {
     if (!isLoggedIn) return
     const unsub = onSnapshot(doc(db, 'daily_inventory', selectedInventoryDate), (d) => {
+      setSelectedDayHasConfig(d.exists())
       if (d.exists()) {
         const data = d.data()
         const currentStocks: Record<string, number> = data.stocks || {}
@@ -734,6 +736,38 @@ export default function Admin() {
                   </button>
               </div>
             </div>
+
+            {(() => {
+              const isToday = selectedInventoryDate === formatDateId(new Date())
+              const isStoreUnlimited = isUnlimitedDay || (!selectedDayHasConfig && !isToday)
+              
+              return (
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.75rem', 
+                  padding: '0.75rem 1rem', 
+                  background: isStoreUnlimited ? 'rgba(37, 211, 102, 0.1)' : 'rgba(255, 193, 7, 0.1)', 
+                  borderRadius: '10px', 
+                  marginBottom: '1.5rem',
+                  border: `1px solid ${isStoreUnlimited ? 'rgba(37, 211, 102, 0.2)' : 'rgba(255, 193, 7, 0.2)'}`,
+                  fontSize: '0.85rem'
+                }}>
+                  <Info size={16} color={isStoreUnlimited ? '#25D366' : '#FFC107'} />
+                  <div style={{ color: isStoreUnlimited ? '#25D366' : '#FFC107' }}>
+                    <strong>Estatus en Tienda:</strong> {isStoreUnlimited ? (
+                      <>
+                        <span style={{fontWeight: 'bold'}}>ILIMITADO</span> {!selectedDayHasConfig && <span style={{ opacity: 0.8 }}>(Automático por ser fecha futura sin configuración)</span>}
+                      </>
+                    ) : (
+                      <>
+                        <span style={{fontWeight: 'bold'}}>STOCK MANUAL</span> {isToday && !selectedDayHasConfig && <span style={{ opacity: 0.8 }}>(Default por ser hoy)</span>}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
 
             {showNewItemForm && (
               <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '1px solid var(--primary)' }}>
