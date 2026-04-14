@@ -378,6 +378,15 @@ export default function Admin() {
     }
   }
 
+  const toggleItemDisabled = async (itemId: string, currentlyDisabled: boolean) => {
+    try {
+      await updateDoc(doc(db, 'inventory', itemId), { disabled: !currentlyDisabled })
+      toast.success(!currentlyDisabled ? 'Producto deshabilitado (oculto en tienda)' : 'Producto habilitado (visible en tienda)')
+    } catch (e) {
+      toast.error('Error al cambiar estado del producto')
+    }
+  }
+
   const addNewItem = async () => {
     if (!newItemName) return toast.error('Nombre requerido')
     // Generate clean ID from name
@@ -524,21 +533,125 @@ export default function Admin() {
               <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem' }}>Guardar</button>
             </form>
           </div>
-          <div style={{ padding: '1.5rem', background: 'var(--bg-dark)', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <div>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Calendar size={18}/> Días Visibles en Tienda</h3>
-              <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Cuantos días hábiles (Lunes a Viernes) pueden ver los clientes.</p>
+          <div style={{ 
+            padding: '1.25rem', 
+            background: 'var(--bg-dark)', 
+            borderRadius: '12px', 
+            border: '1px solid var(--border-color)',
+            width: '100%',
+            maxWidth: '400px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <Calendar size={18} color="var(--primary)" />
+              <h3 style={{ margin: 0, fontSize: '1rem' }}>Días Visibles en Tienda</h3>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <input 
-                type="number" 
-                min="1" 
-                max="15" 
-                value={visibleDays} 
-                onChange={e => handleUpdateVisibleDays(parseInt(e.target.value) || 5)} 
-                style={{ width: '60px', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white', textAlign: 'center' }} 
-              />
-              <span style={{ fontSize: '0.9rem' }}>días</span>
+            <p style={{ margin: '0 0 1rem 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Cuántos días hábiles (Lun-Vie) pueden ver los clientes.
+            </p>
+            
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              gap: '0.75rem',
+              background: 'var(--bg-card)',
+              padding: '0.75rem',
+              borderRadius: '10px'
+            }}>
+              <button 
+                type="button"
+                onClick={() => visibleDays > 1 && handleUpdateVisibleDays(visibleDays - 1)}
+                disabled={visibleDays <= 1}
+                style={{ 
+                  width: '44px', 
+                  height: '44px', 
+                  borderRadius: '10px', 
+                  border: 'none', 
+                  background: visibleDays <= 1 ? 'var(--bg-dark)' : 'var(--primary)', 
+                  color: visibleDays <= 1 ? 'var(--text-muted)' : 'white',
+                  fontSize: '1.5rem', 
+                  fontWeight: 'bold',
+                  cursor: visibleDays <= 1 ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <Minus size={20} />
+              </button>
+              
+              <div style={{ 
+                minWidth: '80px', 
+                textAlign: 'center',
+                padding: '0.5rem 1rem',
+                background: 'var(--bg-dark)',
+                borderRadius: '8px'
+              }}>
+                <div style={{ 
+                  fontSize: '1.75rem', 
+                  fontWeight: 'bold', 
+                  color: 'var(--primary)',
+                  lineHeight: 1
+                }}>
+                  {visibleDays}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  días
+                </div>
+              </div>
+              
+              <button 
+                type="button"
+                onClick={() => visibleDays < 15 && handleUpdateVisibleDays(visibleDays + 1)}
+                disabled={visibleDays >= 15}
+                style={{ 
+                  width: '44px', 
+                  height: '44px', 
+                  borderRadius: '10px', 
+                  border: 'none', 
+                  background: visibleDays >= 15 ? 'var(--bg-dark)' : 'var(--primary)', 
+                  color: visibleDays >= 15 ? 'var(--text-muted)' : 'white',
+                  fontSize: '1.5rem', 
+                  fontWeight: 'bold',
+                  cursor: visibleDays >= 15 ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <Plus size={20} />
+              </button>
+            </div>
+            
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              gap: '0.5rem', 
+              marginTop: '0.75rem',
+              flexWrap: 'wrap'
+            }}>
+              {[3, 5, 7, 10].map(preset => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => handleUpdateVisibleDays(preset)}
+                  style={{
+                    padding: '0.4rem 0.8rem',
+                    borderRadius: '6px',
+                    border: visibleDays === preset ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                    background: visibleDays === preset ? 'rgba(var(--primary-rgb), 0.1)' : 'transparent',
+                    color: visibleDays === preset ? 'var(--primary)' : 'var(--text-muted)',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {preset} días
+                </button>
+              ))}
             </div>
           </div>
           <div>
@@ -808,32 +921,55 @@ export default function Admin() {
               <h3 className="inventory-section-title">{section.icon} {section.title}</h3>
               <div className="inventory-grid">
                 {section.items.map((item) => (
-                  <div key={item.id} className="inventory-card">
+                  <div key={item.id} className="inventory-card" style={{ opacity: item.disabled ? 0.5 : 1, border: item.disabled ? '2px dashed #ef4444' : undefined }}>
                     <div className="inventory-card-header">
                       <div className="inventory-card-info">
                         <div className="inventory-icon">{item.icon}</div>
                         <div>
-                          <h4 className="inventory-name">{item.name}</h4>
-                          <span className="inventory-type">{item.type === 'flavor' ? 'Sabor' : 'Producto'}</span>
+                          <h4 className="inventory-name" style={{ textDecoration: item.disabled ? 'line-through' : 'none' }}>{item.name}</h4>
+                          <span className="inventory-type">
+                            {item.type === 'flavor' ? 'Sabor' : 'Producto'}
+                            {item.disabled && <span style={{ color: '#ef4444', marginLeft: '0.5rem', fontWeight: 600 }}>OCULTO</span>}
+                          </span>
                         </div>
                       </div>
-                      {role === 'admin' && (
-                        <button 
-                          onClick={() => {
-                            if (editingInventoryId === item.id) {
-                              setEditingInventoryId(null)
-                            } else {
-                              setEditingInventoryId(item.id)
-                              setEditStockValue(item.stock.toString())
-                              setEditPriceValue((item.price || 0).toString())
-                            }
-                          }}
-                          className="adjust-btn"
-                          title="Editar detalles"
-                        >
-                          <Edit3 size={16} />
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        {role === 'admin' && (
+                          <button 
+                            onClick={() => toggleItemDisabled(item.id, !!item.disabled)}
+                            style={{ 
+                              background: item.disabled ? '#ef4444' : '#22c55e',
+                              border: 'none',
+                              borderRadius: '6px',
+                              padding: '0.4rem 0.6rem',
+                              cursor: 'pointer',
+                              color: 'white',
+                              fontSize: '0.7rem',
+                              fontWeight: 600
+                            }}
+                            title={item.disabled ? 'Habilitar (mostrar en tienda)' : 'Deshabilitar (ocultar de tienda)'}
+                          >
+                            {item.disabled ? 'Habilitar' : 'Ocultar'}
+                          </button>
+                        )}
+                        {role === 'admin' && (
+                          <button 
+                            onClick={() => {
+                              if (editingInventoryId === item.id) {
+                                setEditingInventoryId(null)
+                              } else {
+                                setEditingInventoryId(item.id)
+                                setEditStockValue(item.stock.toString())
+                                setEditPriceValue((item.price || 0).toString())
+                              }
+                            }}
+                            className="adjust-btn"
+                            title="Editar detalles"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="stock-control">

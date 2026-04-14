@@ -98,21 +98,26 @@ export default function Store() {
     setCart([])
   }
 
-  // Derived data
-  const MUFFIN_FLAVORS = inventory.filter(i => i.type === 'flavor')
+  // Derived data - filtrar sabores deshabilitados
+  const MUFFIN_FLAVORS = inventory.filter(i => i.type === 'flavor' && !i.disabled)
   
-  // Base products (we'll keep the muffin base entry for now but it could be in DB too)
+  // Base products - filtrar productos deshabilitados
+  // Verificar si el producto base de muffin está deshabilitado
+  const muffinBase = inventory.find(i => i.id === 'product_muffin_base')
+  const muffinBaseDisabled = muffinBase?.disabled || false
+  
   const PRODUCTS: Product[] = [
-    {
+    // Solo mostrar muffins si el producto base no está deshabilitado y hay sabores disponibles
+    ...(!muffinBaseDisabled && MUFFIN_FLAVORS.length > 0 ? [{
       id: 'muffin_platano',
       name: 'Muffins de plátano',
       icon: '🍌',
-      price: inventory.find(i => i.id === 'product_muffin_base')?.price || 15,
+      price: muffinBase?.price || 15,
       description: 'Deliciosos muffins caseros. Elige un sabor por pieza.',
       requiresFlavor: true
-    },
+    }] : []),
     ...inventory
-      .filter(i => i.type === 'product' && i.id !== 'product_muffin_base')
+      .filter(i => i.type === 'product' && i.id !== 'product_muffin_base' && !i.disabled)
       .sort((a, b) => {
         // Orden específico: pays primero, luego cacahuates, luego resto
         const priority = { 'product_mini_pays': 1, 'product_cacahuates': 2 }
