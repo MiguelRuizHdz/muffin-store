@@ -56,7 +56,8 @@ export default function Admin() {
   const [editStockValue, setEditStockValue] = useState<string>('')
   const [editPriceValue, setEditPriceValue] = useState<string>('')
 
-  const [availableDates] = useState(() => getNextBusinessDays(5))
+  const [visibleDays, setVisibleDays] = useState(5)
+  const [availableDates, setAvailableDates] = useState<Date[]>(() => getNextBusinessDays(5))
   const [selectedInventoryDate, setSelectedInventoryDate] = useState(formatDateId(new Date()))
   const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
   const [dailyInventory, setDailyInventory] = useState<Record<string, number>>({})
@@ -81,11 +82,15 @@ export default function Admin() {
         let cocinaFound = false
 
         settingsSnap.forEach((d) => {
-          if (d.id === 'admin') { adminPass = d.data().password; adminFound = true }
+          if (d.id === 'admin') { 
+            adminPass = d.data().password; 
+            adminFound = true;
+            if (d.data().visibleDays) setVisibleDays(d.data().visibleDays);
+          }
           if (d.id === 'cocina') { cocinaPass = d.data().password; cocinaFound = true }
         })
         
-        if (!adminFound) await setDoc(doc(db, 'settings', 'admin'), { password: adminPass })
+        if (!adminFound) await setDoc(doc(db, 'settings', 'admin'), { password: adminPass, visibleDays: 5 })
         if (!cocinaFound) await setDoc(doc(db, 'settings', 'cocina'), { password: cocinaPass })
 
         setDbAdminPassword(adminPass)
@@ -106,6 +111,11 @@ export default function Admin() {
     }
     fetchSettings()
   }, [])
+
+  // 1.5 Update available dates when visibleDays changes
+  useEffect(() => {
+    setAvailableDates(getNextBusinessDays(visibleDays))
+  }, [visibleDays])
 
   // 2. Fetch orders in real time (only if logged in)
   useEffect(() => {
@@ -226,6 +236,16 @@ export default function Admin() {
       toast.success('Contraseña actualizada')
     } catch (error) {
       toast.error('Error al actualizar contraseña')
+    }
+  }
+
+  const handleUpdateVisibleDays = async (val: number) => {
+    try {
+      await updateDoc(doc(db, 'settings', 'admin'), { visibleDays: val })
+      setVisibleDays(val)
+      toast.success('Configuración guardada')
+    } catch (error) {
+      toast.error('Error al guardar configuración')
     }
   }
   const updateOrderStatus = async (orderId: string, shortId: string | undefined, currentStatus: Order['status']) => {
@@ -501,6 +521,23 @@ export default function Admin() {
               <input type="text" placeholder="Nueva contraseña admin" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ padding: '0.6rem', borderRadius: '8px', border: '1px solid #ddd' }} />
               <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem' }}>Guardar</button>
             </form>
+          </div>
+          <div style={{ padding: '1.5rem', background: 'var(--bg-dark)', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Calendar size={18}/> Días Visibles en Tienda</h3>
+              <p style={{ margin: '5px 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Cuantos días hábiles (Lunes a Viernes) pueden ver los clientes.</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <input 
+                type="number" 
+                min="1" 
+                max="15" 
+                value={visibleDays} 
+                onChange={e => handleUpdateVisibleDays(parseInt(e.target.value) || 5)} 
+                style={{ width: '60px', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white', textAlign: 'center' }} 
+              />
+              <span style={{ fontSize: '0.9rem' }}>días</span>
+            </div>
           </div>
           <div>
             <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Edit3 size={18}/> Contraseña COCINA</h3>

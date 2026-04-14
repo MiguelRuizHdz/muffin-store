@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, serverTimestamp, onSnapshot, query, runTransaction, doc } from 'firebase/firestore'
+import { collection, serverTimestamp, onSnapshot, query, runTransaction, doc, getDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
 import QRCode from 'react-qr-code'
@@ -33,7 +33,8 @@ export default function Store() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedFlavor, setSelectedFlavor] = useState<string>('')
   
-  const [availableDates] = useState(() => getNextBusinessDays(5))
+  const [visibleDays, setVisibleDays] = useState(5)
+  const [availableDates, setAvailableDates] = useState<Date[]>(() => getNextBusinessDays(5))
   const [deliveryDate, setDeliveryDate] = useState(formatDateId(new Date()))
   const [dailyInventory, setDailyInventory] = useState<Record<string, number>>({})
   const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
@@ -47,6 +48,26 @@ export default function Store() {
     })
     return () => unsubscribe()
   }, [])
+
+  // Fetch settings for visible days
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const adminSnap = await getDoc(doc(db, 'settings', 'admin'))
+        if (adminSnap.exists() && adminSnap.data().visibleDays) {
+          setVisibleDays(adminSnap.data().visibleDays)
+        }
+      } catch (e) {
+        console.error("Error fetching config:", e)
+      }
+    }
+    fetchConfig()
+  }, [])
+
+  // Update available dates when visibleDays changes
+  useEffect(() => {
+    setAvailableDates(getNextBusinessDays(visibleDays))
+  }, [visibleDays])
 
   // Real-time daily inventory for selected date
   useEffect(() => {
