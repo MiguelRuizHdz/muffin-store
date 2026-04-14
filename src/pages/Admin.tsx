@@ -333,6 +333,15 @@ export default function Admin() {
     }
   }
 
+  const toggleDailyUnlimited = async () => {
+    try {
+      await setDoc(doc(db, 'daily_inventory', selectedInventoryDate), { isUnlimited: !isUnlimitedDay }, { merge: true })
+      toast.success(`Modo ${!isUnlimitedDay ? 'Ilimitado' : 'Limitado'} activado`)
+    } catch (e) {
+      toast.error('Error al actualizar')
+    }
+  }
+
   const toggleItemUnlimited = async (itemId: string) => {
     try {
       const isCurrentlyUnlimited = unlimitedItems.includes(itemId)
@@ -611,11 +620,7 @@ export default function Admin() {
                   >
                     <Plus size={16} /> Nuevo
                   </button>
-                  <button 
-                    onClick={initializeInventory} 
-                    className="add-btn" 
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#4A5568', padding: '0.6rem 1rem' }}
-                  >
+                  <button onClick={() => initializeInventory()} className="add-btn" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#4A5568', padding: '0.6rem 1rem' }}>
                     <Package size={16} /> Cargar Base
                   </button>
                 </div>
