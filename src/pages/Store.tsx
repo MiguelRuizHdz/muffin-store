@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, serverTimestamp, onSnapshot, query, runTransaction, doc, getDoc } from 'firebase/firestore'
+import { collection, serverTimestamp, onSnapshot, query, runTransaction, doc } from 'firebase/firestore'
 import { db } from '../firebase'
 import toast from 'react-hot-toast'
 import QRCode from 'react-qr-code'
