@@ -39,6 +39,7 @@ export default function Store() {
   const [dailyInventory, setDailyInventory] = useState<Record<string, number>>({})
   const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
   const [isUnlimitedDay, setIsUnlimitedDay] = useState(false)
+  const [closedDate, setClosedDate] = useState('')
   
   // Real-time inventory
   useEffect(() => {
@@ -49,25 +50,39 @@ export default function Store() {
     return () => unsubscribe()
   }, [])
 
-  // Fetch settings for visible days
+  // Fetch settings for visible days and closed status
   useEffect(() => {
-    const fetchConfig = async () => {
-      try {
-        const adminSnap = await getDoc(doc(db, 'settings', 'admin'))
-        if (adminSnap.exists() && adminSnap.data().visibleDays) {
-          setVisibleDays(adminSnap.data().visibleDays)
-        }
-      } catch (e) {
-        console.error("Error fetching config:", e)
+    const unsub = onSnapshot(doc(db, 'settings', 'admin'), (d) => {
+      if (d.exists()) {
+        const data = d.data()
+        if (data.visibleDays) setVisibleDays(data.visibleDays)
+        if (data.closedDate) setClosedDate(data.closedDate)
+        else setClosedDate('')
       }
-    }
-    fetchConfig()
+    })
+    return () => unsub()
   }, [])
 
-  // Update available dates when visibleDays changes
+  // Update available dates when visibleDays or closedDate changes
   useEffect(() => {
-    setAvailableDates(getNextBusinessDays(visibleDays))
-  }, [visibleDays])
+    let dates = getNextBusinessDays(visibleDays)
+    const todayId = formatDateId(new Date())
+    
+    // Si hoy está cerrado, filtrar el primer elemento si es hoy
+    if (closedDate === todayId) {
+      dates = dates.filter(d => formatDateId(d) !== todayId)
+    }
+    
+    setAvailableDates(dates)
+    
+    // Si la fecha seleccionada ya no está disponible, cambiar a la primera disponible
+    if (dates.length > 0) {
+      const isStillAvailable = dates.some(d => formatDateId(d) === deliveryDate)
+      if (!isStillAvailable) {
+        setDeliveryDate(formatDateId(dates[0]))
+      }
+    }
+  }, [visibleDays, closedDate])
 
   // Real-time daily inventory for selected date
   useEffect(() => {

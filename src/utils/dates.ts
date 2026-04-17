@@ -17,7 +17,11 @@ export const getNextBusinessDays = (count: number) => {
 };
 
 export const formatDateId = (date: Date) => {
-  return date.toISOString().split('T')[0];
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 export const formatDisplayDate = (date: Date) => {

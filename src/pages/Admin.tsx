@@ -64,6 +64,7 @@ export default function Admin() {
   const [dailyInventory, setDailyInventory] = useState<Record<string, number>>({})
   const [isUnlimitedDay, setIsUnlimitedDay] = useState(false)
   const [selectedDayHasConfig, setSelectedDayHasConfig] = useState(false)
+  const [closedDate, setClosedDate] = useState('')
   
   const [showNewItemForm, setShowNewItemForm] = useState(false)
   const [newItemName, setNewItemName] = useState('')
@@ -88,6 +89,7 @@ export default function Admin() {
             adminPass = d.data().password; 
             adminFound = true;
             if (d.data().visibleDays) setVisibleDays(d.data().visibleDays);
+            if (d.data().closedDate) setClosedDate(d.data().closedDate);
           }
           if (d.id === 'cocina') { cocinaPass = d.data().password; cocinaFound = true }
         })
@@ -250,6 +252,20 @@ export default function Admin() {
       toast.success('Configuración guardada')
     } catch (error) {
       toast.error('Error al guardar configuración')
+    }
+  }
+
+  const handleToggleClosedToday = async () => {
+    const todayId = formatDateId(new Date())
+    const newVal = closedDate === todayId ? '' : todayId
+    
+    try {
+      await updateDoc(doc(db, 'settings', 'admin'), { closedDate: newVal })
+      setClosedDate(newVal)
+      toast.success(newVal ? 'Tienda cerrada para hoy' : 'Tienda re-abierta')
+      logEvent(newVal ? 'Cierre de pedidos para hoy' : 'Re-apertura de pedidos para hoy')
+    } catch (error) {
+      toast.error('Error al actualizar estado')
     }
   }
   const updateOrderStatus = async (orderId: string, shortId: string | undefined, currentStatus: Order['status']) => {
@@ -537,6 +553,56 @@ export default function Admin() {
               <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem' }}>Guardar</button>
             </form>
           </div>
+          
+          <div style={{ 
+            padding: '1.25rem', 
+            background: 'var(--bg-dark)', 
+            borderRadius: '12px', 
+            border: '1px solid var(--border-color)',
+            width: '100%',
+            maxWidth: '400px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <Calendar size={18} color="var(--primary)" />
+              <h3 style={{ margin: 0, fontSize: '1rem' }}>Estado de la Tienda</h3>
+            </div>
+            
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              background: 'var(--bg-card)',
+              padding: '1rem',
+              borderRadius: '10px',
+              border: `1px solid ${closedDate === formatDateId(new Date()) ? '#ef4444' : 'var(--border-color)'}`
+            }}>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: closedDate === formatDateId(new Date()) ? '#ef4444' : '#22c55e' }}>
+                  {closedDate === formatDateId(new Date()) ? '🔴 CERRADO PARA HOY' : '🟢 ABIERTO HOY'}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {closedDate === formatDateId(new Date()) ? 'Clientes no pueden pedir para hoy' : 'Hoy está visible en la tienda'}
+                </div>
+              </div>
+              
+              <button 
+                onClick={handleToggleClosedToday}
+                style={{ 
+                  padding: '0.5rem 1rem', 
+                  borderRadius: '8px', 
+                  border: 'none', 
+                  background: closedDate === formatDateId(new Date()) ? '#22c55e' : '#ef4444',
+                  color: 'white',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {closedDate === formatDateId(new Date()) ? 'Re-abrir' : 'Cerrar Hoy'}
+              </button>
+            </div>
+          </div>
+
           <div style={{ 
             padding: '1.25rem', 
             background: 'var(--bg-dark)', 
