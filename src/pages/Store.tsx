@@ -14,6 +14,7 @@ interface Product {
   price: number
   description: string
   requiresFlavor: boolean
+  flavorCategory?: string
 }
 
 interface CartItem {
@@ -114,25 +115,39 @@ export default function Store() {
   }
 
   // Derived data - filtrar sabores deshabilitados
-  const MUFFIN_FLAVORS = inventory.filter(i => i.type === 'flavor' && !i.disabled)
+  const ALL_FLAVORS = inventory.filter(i => i.type === 'flavor' && !i.disabled)
   
   // Base products - filtrar productos deshabilitados
   // Verificar si el producto base de muffin está deshabilitado
   const muffinBase = inventory.find(i => i.id === 'product_muffin_base')
   const muffinBaseDisabled = muffinBase?.disabled || false
+
+  const empanadaBase = inventory.find(i => i.id === 'product_empanadas_gourmet')
+  const empanadaBaseDisabled = empanadaBase?.disabled || false
   
   const PRODUCTS: Product[] = [
     // Solo mostrar muffins si el producto base no está deshabilitado y hay sabores disponibles
-    ...(!muffinBaseDisabled && MUFFIN_FLAVORS.length > 0 ? [{
+    ...(!muffinBaseDisabled && ALL_FLAVORS.some(f => f.category === 'muffin') ? [{
       id: 'muffin_platano',
       name: 'Muffins de plátano',
       icon: '🍌',
       price: muffinBase?.price || 15,
       description: 'Deliciosos muffins caseros. Elige un sabor por pieza.',
-      requiresFlavor: true
+      requiresFlavor: true,
+      flavorCategory: 'muffin'
+    }] : []),
+    // Solo mostrar empanadas si el producto base no está deshabilitado y hay sabores disponibles
+    ...(!empanadaBaseDisabled && ALL_FLAVORS.some(f => f.category === 'empanada') ? [{
+      id: 'empanadas_gourmet',
+      name: 'Empanadas Gourmet',
+      icon: '🥟',
+      price: empanadaBase?.price || 20,
+      description: 'Deliciosas empanadas gourmet con queso Philadelphia.',
+      requiresFlavor: true,
+      flavorCategory: 'empanada'
     }] : []),
     ...inventory
-      .filter(i => i.type === 'product' && i.id !== 'product_muffin_base' && !i.disabled)
+      .filter(i => i.type === 'product' && i.id !== 'product_muffin_base' && i.id !== 'product_empanadas_gourmet' && !i.disabled)
       .sort((a, b) => {
         // Orden específico: pays primero, luego cacahuates, luego resto
         const priority = { 'product_mini_pays': 1, 'product_cacahuates': 2 }
@@ -169,7 +184,7 @@ export default function Store() {
       return
     }
 
-    const flavor = MUFFIN_FLAVORS.find(f => f.id === selectedFlavor)
+    const flavor = ALL_FLAVORS.find(f => f.id === selectedFlavor)
     const inventoryId = product.requiresFlavor ? selectedFlavor : product.id
     const currentStock = getStock(inventoryId)
 
@@ -418,15 +433,17 @@ export default function Store() {
                   onChange={(e) => setSelectedFlavor(e.target.value)}
                 >
                   <option value="" disabled>Selecciona un sabor...</option>
-                  {MUFFIN_FLAVORS.map(flavor => {
-                    const stock = getStock(flavor.id)
-                    const itemIsUnlimited = isUnlimitedDay || unlimitedItems.includes(flavor.id)
-                    return (
-                      <option key={flavor.id} value={flavor.id} disabled={!itemIsUnlimited && stock <= 0}>
-                        {flavor.icon} {flavor.name} {!itemIsUnlimited ? (stock <= 0 ? '(AGOTADO)' : `(${stock} disponibles)`) : '(Ilimitado)'}
-                      </option>
-                    )
-                  })}
+                  {ALL_FLAVORS
+                    .filter(f => f.category === product.flavorCategory)
+                    .map(flavor => {
+                      const stock = getStock(flavor.id)
+                      const itemIsUnlimited = isUnlimitedDay || unlimitedItems.includes(flavor.id)
+                      return (
+                        <option key={flavor.id} value={flavor.id} disabled={!itemIsUnlimited && stock <= 0}>
+                          {flavor.icon} {flavor.name} {!itemIsUnlimited ? (stock <= 0 ? '(AGOTADO)' : `(${stock} disponibles)`) : '(Ilimitado)'}
+                        </option>
+                      )
+                    })}
                 </select>
               )}
               

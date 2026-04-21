@@ -350,13 +350,22 @@ export default function Admin() {
       const batch = writeBatch(db)
       
       const items = [
-        { id: 'flavor_nuez', name: 'Nuez', type: 'flavor', icon: '🥜', stock: 0 },
-        { id: 'flavor_almendra', name: 'Almendra', type: 'flavor', icon: '🌰', stock: 0 },
-        { id: 'flavor_arandano', name: 'Arándano', type: 'flavor', icon: '🫐', stock: 0 },
-        { id: 'flavor_chispas', name: 'Chispas de chocolate', type: 'flavor', icon: '🍫', stock: 0 },
-        { id: 'flavor_nutella', name: 'Nutella', type: 'flavor', icon: '🍫✨', stock: 0 },
-        { id: 'flavor_goober', name: 'Goober (fresa con cacahuate)', type: 'flavor', icon: '🍓🥜', stock: 0 },
+        { id: 'flavor_nuez', name: 'Nuez', type: 'flavor', category: 'muffin', icon: '🥜', stock: 0 },
+        { id: 'flavor_almendra', name: 'Almendra', type: 'flavor', category: 'muffin', icon: '🌰', stock: 0 },
+        { id: 'flavor_arandano', name: 'Arándano', type: 'flavor', category: 'muffin', icon: '🫐', stock: 0 },
+        { id: 'flavor_chispas', name: 'Chispas de chocolate', type: 'flavor', category: 'muffin', icon: '🍫', stock: 0 },
+        { id: 'flavor_nutella', name: 'Nutella', type: 'flavor', category: 'muffin', icon: '🍫✨', stock: 0 },
+        { id: 'flavor_goober', name: 'Goober (fresa con cacahuate)', type: 'flavor', category: 'muffin', icon: '🍓🥜', stock: 0 },
+        
+        // Empanadas Gourmet Flavors
+        { id: 'flavor_empanada_pina', name: 'Piña', type: 'flavor', category: 'empanada', icon: '🍍', stock: 0 },
+        { id: 'flavor_empanada_cajeta', name: 'Cajeta', type: 'flavor', category: 'empanada', icon: '🍯', stock: 0 },
+        { id: 'flavor_empanada_zarzamora', name: 'Zarzamora', type: 'flavor', category: 'empanada', icon: '🫐', stock: 0 },
+        { id: 'flavor_empanada_dulce_leche', name: 'Dulce de leche', type: 'flavor', category: 'empanada', icon: '🥛', stock: 0 },
+
         { id: 'product_muffin_base', name: 'Muffins de plátano', type: 'product', icon: '🍌', stock: 0, price: 15, description: 'Precio base del muffin' },
+        { id: 'product_empanadas_gourmet', name: 'Empanadas Gourmet', type: 'product', icon: '🥟', stock: 0, price: 20, description: 'Empanadas gourmet con queso Philadelphia' },
+        
         { id: 'product_mini_pays', name: 'Mini pays de queso', type: 'product', icon: '🧀', stock: 0, price: 15, description: '2 por $15 (1 bolsa incluye 2 pays)' },
         { id: 'product_cacahuates', name: 'Bolsa de cacahuates japoneses', type: 'product', icon: '🥜', stock: 0, price: 15, description: 'Contiene bolsa de salsa botanera' },
         { id: 'product_galleta_doble_chocolate', name: 'Galleta doble chocolate', type: 'product', icon: '🍪', stock: 0, price: 15, description: 'Galleta de chispas de chocolate (doble chocolate)' },
@@ -426,7 +435,8 @@ export default function Admin() {
         icon: newItemIcon || (newItemType === 'flavor' ? '🍩' : '📦'),
         price: newItemType === 'product' ? parseInt(newItemPrice) : 0,
         description: newItemDescription,
-        stock: 0
+        stock: 0,
+        category: newItemType === 'flavor' ? 'muffin' : undefined // Default category for new flavors
       }
       await setDoc(doc(db, 'inventory', fullId), item)
       toast.success('Producto agregado con éxito')
@@ -998,7 +1008,7 @@ export default function Admin() {
                         <div>
                           <h4 className="inventory-name" style={{ textDecoration: item.disabled ? 'line-through' : 'none' }}>{item.name}</h4>
                           <span className="inventory-type">
-                            {item.type === 'flavor' ? 'Sabor' : 'Producto'}
+                            {item.type === 'flavor' ? `Sabor (${item.category || 'sin categoría'})` : 'Producto'}
                             {item.disabled && <span style={{ color: '#ef4444', marginLeft: '0.5rem', fontWeight: 600 }}>OCULTO</span>}
                           </span>
                         </div>
