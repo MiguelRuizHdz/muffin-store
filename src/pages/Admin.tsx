@@ -1187,10 +1187,8 @@ export default function Admin() {
                         )}
                         <button 
                           onClick={async () => {
-                            // Usar una función local para evitar problemas con estados que no se han actualizado
-                            if (field === 'stock') {
-                               updateInventoryValue(item.id, 'stock', parseInt(editStockValue))
-                            }
+                            // Actualizar stock en daily_inventory
+                            updateInventoryValue(item.id, 'stock', parseInt(editStockValue))
                             
                             if (role === 'admin') {
                               try {
