@@ -56,8 +56,12 @@ export default function Admin() {
   const [editStockValue, setEditStockValue] = useState<string>('')
   const [editPriceValue, setEditPriceValue] = useState<string>('')
   const [editDescriptionValue, setEditDescriptionValue] = useState<string>('')
+  const [editNameValue, setEditNameValue] = useState<string>('')
+  const [editIconValue, setEditIconValue] = useState<string>('')
 
   const [visibleDays, setVisibleDays] = useState(5)
+  const [storeName, setStoreName] = useState('Delicias Bakery')
+  const [storeSubtitle, setStoreSubtitle] = useState('Los mejores postres caseros a tu alcance 🧁')
   const [availableDates, setAvailableDates] = useState<Date[]>(() => getNextBusinessDays(5))
   const [selectedInventoryDate, setSelectedInventoryDate] = useState(formatDateId(new Date()))
   const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
@@ -90,6 +94,8 @@ export default function Admin() {
             adminFound = true;
             if (d.data().visibleDays) setVisibleDays(d.data().visibleDays);
             if (d.data().closedDate) setClosedDate(d.data().closedDate);
+            if (d.data().storeName) setStoreName(d.data().storeName);
+            if (d.data().storeSubtitle) setStoreSubtitle(d.data().storeSubtitle);
           }
           if (d.id === 'cocina') { cocinaPass = d.data().password; cocinaFound = true }
         })
@@ -255,6 +261,17 @@ export default function Admin() {
     }
   }
 
+  const handleUpdateStoreMetadata = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      await updateDoc(doc(db, 'settings', 'admin'), { storeName, storeSubtitle })
+      toast.success('Información de la tienda actualizada')
+      logEvent(`Nombre de tienda cambiado a "${storeName}"`)
+    } catch (error) {
+      toast.error('Error al actualizar información')
+    }
+  }
+
   const handleToggleClosedToday = async () => {
     const todayId = formatDateId(new Date())
     const newVal = closedDate === todayId ? '' : todayId
@@ -318,7 +335,7 @@ export default function Admin() {
     }
   }
 
-  const updateInventoryValue = async (id: string, field: 'stock' | 'price' | 'description', value: number | string) => {
+  const updateInventoryValue = async (id: string, field: 'stock' | 'price' | 'description' | 'name' | 'icon', value: number | string) => {
     try {
       if (field === 'stock') {
         const newDaily = { ...dailyInventory, [id]: value }
@@ -555,7 +572,22 @@ export default function Admin() {
       </header>
 
       {showSettings && role === 'admin' && (
-        <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', flexWrap: 'wrap', gap: '2rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <div style={{ width: '100%', maxWidth: '400px' }}>
+            <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Settings size={18}/> Información de la Tienda</h3>
+            <form onSubmit={handleUpdateStoreMetadata} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>NOMBRE DE LA TIENDA</label>
+                <input type="text" value={storeName} onChange={e => setStoreName(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #ddd' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>SUBTÍTULO / ESlogan</label>
+                <input type="text" value={storeSubtitle} onChange={e => setStoreSubtitle(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #ddd' }} />
+              </div>
+              <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem' }}>Guardar Cambios</button>
+            </form>
+          </div>
+          
           <div>
             <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Edit3 size={18}/> Contraseña ADMIN</h3>
             <form onSubmit={e => handleUpdatePassword(e, 'admin')} style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
@@ -1042,6 +1074,8 @@ export default function Admin() {
                                 setEditStockValue(item.stock.toString())
                                 setEditPriceValue((item.price || 0).toString())
                                 setEditDescriptionValue(item.description || '')
+                                setEditNameValue(item.name || '')
+                                setEditIconValue(item.icon || '')
                               }
                             }}
                             className="adjust-btn"
@@ -1117,6 +1151,28 @@ export default function Admin() {
                             </div>
                           )}
                         </div>
+                        {role === 'admin' && (
+                          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                             <div style={{ flex: '1 1 150px' }}>
+                              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>NOMBRE</label>
+                              <input 
+                                type="text" 
+                                value={editNameValue} 
+                                onChange={e => setEditNameValue(e.target.value)}
+                                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }}
+                              />
+                            </div>
+                            <div style={{ width: '60px' }}>
+                              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>ICONO</label>
+                              <input 
+                                type="text" 
+                                value={editIconValue} 
+                                onChange={e => setEditIconValue(e.target.value)}
+                                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white', textAlign: 'center' }}
+                              />
+                            </div>
+                          </div>
+                        )}
                         {role === 'admin' && item.type === 'product' && (
                           <div>
                             <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>DESCRIPCIÓN</label>
@@ -1130,11 +1186,27 @@ export default function Admin() {
                           </div>
                         )}
                         <button 
-                          onClick={() => {
-                            updateInventoryValue(item.id, 'stock', parseInt(editStockValue))
-                            if (role === 'admin' && item.type === 'product') {
-                              updateInventoryValue(item.id, 'price', parseInt(editPriceValue))
-                              updateInventoryValue(item.id, 'description', editDescriptionValue)
+                          onClick={async () => {
+                            // Usar una función local para evitar problemas con estados que no se han actualizado
+                            if (field === 'stock') {
+                               updateInventoryValue(item.id, 'stock', parseInt(editStockValue))
+                            }
+                            
+                            if (role === 'admin') {
+                              try {
+                                await updateDoc(doc(db, 'inventory', item.id), {
+                                  name: editNameValue,
+                                  icon: editIconValue,
+                                  ...(item.type === 'product' ? { 
+                                    price: parseInt(editPriceValue),
+                                    description: editDescriptionValue 
+                                  } : {})
+                                })
+                                toast.success('Producto actualizado')
+                                setEditingInventoryId(null)
+                              } catch (e) {
+                                toast.error('Error al actualizar producto')
+                              }
                             }
                           }}
                           className="add-btn" 

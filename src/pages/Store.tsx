@@ -41,6 +41,8 @@ export default function Store() {
   const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
   const [isUnlimitedDay, setIsUnlimitedDay] = useState(false)
   const [closedDate, setClosedDate] = useState('')
+  const [storeName, setStoreName] = useState('Delicias Bakery')
+  const [storeSubtitle, setStoreSubtitle] = useState('Los mejores postres caseros a tu alcance 🧁')
   
   // Real-time inventory
   useEffect(() => {
@@ -59,6 +61,8 @@ export default function Store() {
         if (data.visibleDays) setVisibleDays(data.visibleDays)
         if (data.closedDate) setClosedDate(data.closedDate)
         else setClosedDate('')
+        if (data.storeName) setStoreName(data.storeName)
+        if (data.storeSubtitle) setStoreSubtitle(data.storeSubtitle)
       }
     })
     return () => unsub()
@@ -129,20 +133,20 @@ export default function Store() {
     // Solo mostrar muffins si el producto base no está deshabilitado y hay sabores disponibles
     ...(!muffinBaseDisabled && ALL_FLAVORS.some(f => f.category === 'muffin') ? [{
       id: 'muffin_platano',
-      name: 'Muffins de plátano',
-      icon: '🍌',
+      name: muffinBase?.name || 'Muffins de plátano',
+      icon: muffinBase?.icon || '🍌',
       price: muffinBase?.price || 15,
-      description: 'Deliciosos muffins caseros. Elige un sabor por pieza.',
+      description: muffinBase?.description || 'Deliciosos muffins caseros. Elige un sabor por pieza.',
       requiresFlavor: true,
       flavorCategory: 'muffin'
     }] : []),
     // Solo mostrar empanadas si el producto base no está deshabilitado y hay sabores disponibles
     ...(!empanadaBaseDisabled && ALL_FLAVORS.some(f => f.category === 'empanada') ? [{
       id: 'empanadas_gourmet',
-      name: 'Empanadas Gourmet',
-      icon: '🥟',
+      name: empanadaBase?.name || 'Empanadas Gourmet',
+      icon: empanadaBase?.icon || '🥟',
       price: empanadaBase?.price || 20,
-      description: 'Deliciosas empanadas gourmet con queso Philadelphia.',
+      description: empanadaBase?.description || 'Deliciosas empanadas gourmet con queso Philadelphia.',
       requiresFlavor: true,
       flavorCategory: 'empanada'
     }] : []),
@@ -385,8 +389,8 @@ export default function Store() {
   return (
     <div className="app-container">
       <header>
-        <h1>Delicias Bakery</h1>
-        <p>Los mejores postres caseros a tu alcance {String.fromCodePoint(0x1F9C1)}</p>
+        <h1>{storeName}</h1>
+        <p>{storeSubtitle}</p>
       </header>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', padding: '0.5rem', background: 'var(--surface)', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', overflowX: 'auto', whiteSpace: 'nowrap' }}>
