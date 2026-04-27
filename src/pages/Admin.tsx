@@ -95,6 +95,8 @@ export default function Admin() {
   const [visibleDays, setVisibleDays] = useState(5)
   const [storeName, setStoreName] = useState('Delicias Bakery')
   const [storeSubtitle, setStoreSubtitle] = useState('Los mejores postres caseros a tu alcance 🧁')
+  const [telegramToken, setTelegramToken] = useState('')
+  const [telegramChatId, setTelegramChatId] = useState('')
   const [availableDates, setAvailableDates] = useState<Date[]>(() => getNextBusinessDays(5))
   const [selectedInventoryDate, setSelectedInventoryDate] = useState(formatDateId(new Date()))
   const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
@@ -199,6 +201,8 @@ export default function Admin() {
             if (d.data().closedDate) setClosedDate(d.data().closedDate);
             if (d.data().storeName) setStoreName(d.data().storeName);
             if (d.data().storeSubtitle) setStoreSubtitle(d.data().storeSubtitle);
+            if (d.data().telegramToken) setTelegramToken(d.data().telegramToken);
+            if (d.data().telegramChatId) setTelegramChatId(d.data().telegramChatId);
           }
           if (d.id === 'cocina') { cocinaPass = d.data().password; cocinaFound = true }
         })
@@ -393,7 +397,12 @@ export default function Admin() {
   const handleUpdateStoreMetadata = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await updateDoc(doc(db, 'settings', 'admin'), { storeName, storeSubtitle })
+      await updateDoc(doc(db, 'settings', 'admin'), { 
+        storeName, 
+        storeSubtitle,
+        telegramToken,
+        telegramChatId
+      })
       toast.success('Información de la tienda actualizada')
       logEvent(`Nombre de tienda cambiado a "${storeName}"`)
     } catch (error) {
@@ -703,7 +712,34 @@ export default function Admin() {
                 <label style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>SUBTÍTULO / ESlogan</label>
                 <input type="text" value={storeSubtitle} onChange={e => setStoreSubtitle(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #ddd' }} />
               </div>
-              <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem' }}>Guardar Cambios</button>
+              <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                <h4 style={{ margin: '0 0 0.75rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)', fontSize: '0.9rem' }}>
+                  <MessageCircle size={16} /> Notificaciones Telegram
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', marginBottom: '0.3rem', color: 'var(--text-muted)' }}>BOT TOKEN</label>
+                    <input 
+                      type="password" 
+                      value={telegramToken} 
+                      onChange={e => setTelegramToken(e.target.value)} 
+                      placeholder="123456789:ABCDEF..." 
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} 
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.7rem', marginBottom: '0.3rem', color: 'var(--text-muted)' }}>CHAT ID</label>
+                    <input 
+                      type="text" 
+                      value={telegramChatId} 
+                      onChange={e => setTelegramChatId(e.target.value)} 
+                      placeholder="123456789" 
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} 
+                    />
+                  </div>
+                </div>
+              </div>
+              <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem', marginTop: '1rem' }}>Guardar Cambios</button>
             </form>
           </div>
           

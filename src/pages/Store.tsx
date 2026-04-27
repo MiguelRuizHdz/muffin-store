@@ -50,8 +50,9 @@ export default function Store() {
   const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
   const [isUnlimitedDay, setIsUnlimitedDay] = useState(false)
   const [closedDate, setClosedDate] = useState('')
-  const [storeName, setStoreName] = useState('Delicias Bakery')
   const [storeSubtitle, setStoreSubtitle] = useState('Los mejores postres caseros a tu alcance 🧁')
+  const [telegramToken, setTelegramToken] = useState('')
+  const [telegramChatId, setTelegramChatId] = useState('')
   
   // Real-time inventory
   useEffect(() => {
@@ -72,6 +73,8 @@ export default function Store() {
         else setClosedDate('')
         if (data.storeName) setStoreName(data.storeName)
         if (data.storeSubtitle) setStoreSubtitle(data.storeSubtitle)
+        setTelegramToken(data.telegramToken || '')
+        setTelegramChatId(data.telegramChatId || '')
       }
     })
     return () => unsub()
@@ -294,7 +297,7 @@ export default function Store() {
 
     try {
       // Usar transacción para verificar stock y decrementar en daily_inventory
-      await runTransaction(db, async (transaction) => {
+      const finalOrderId = await runTransaction(db, async (transaction) => {
         const dailyInventoryRef = doc(db, 'daily_inventory', deliveryDate)
         const dailyInventorySnap = await transaction.get(dailyInventoryRef)
         const isToday = deliveryDate === formatDateId(new Date())
@@ -353,13 +356,31 @@ export default function Store() {
         const orderRef = doc(collection(db, 'orders'))
         transaction.set(orderRef, orderData)
         setOrderId(shortId)
+        
+        return shortId
       })
       
       setOrderSuccess(true)
+      const currentCart = [...cart] // Backup for telegram
       setCart([])
       setCustomerName('')
       setCustomerPhone('')
       toast.success('¡Orden enviada con éxito!', { id: toastId })
+
+      // Send Telegram Notification
+      if (telegramToken && telegramChatId) {
+        const message = `🔔 *¡Nuevo Pedido!* (#${finalOrderId})\n\n👤 *Cliente:* ${customerName || 'Cliente'}\n📞 *Tel:* ${customerPhone || 'N/A'}\n📅 *Entrega:* ${deliveryDate}\n\n🛒 *Productos:*\n${currentCart.map(item => `• ${item.quantity}x ${item.name}${item.options.length > 0 ? ` (${item.options.map((o: any) => o.name).join(', ')})` : ''}`).join('\n')}\n\n💰 *Total:* $${total}\n\n_Revisa el panel de admin para más detalles._`
+        
+        fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: telegramChatId,
+            text: message,
+            parse_mode: 'Markdown'
+          })
+        }).catch(err => console.error("Error sending Telegram message:", err))
+      }
 
     } catch (error: any) {
       console.error("Error en checkout: ", error)
