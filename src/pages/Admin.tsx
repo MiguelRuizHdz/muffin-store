@@ -564,7 +564,7 @@ export default function Admin() {
     
     try {
       const fullId = `${newItemType === 'flavor' ? 'flavor_' : 'product_'}${id}`
-      const item = {
+      const item: Record<string, any> = {
         id: fullId,
         name: newItemName,
         type: newItemType,
@@ -572,8 +572,12 @@ export default function Admin() {
         price: newItemType === 'product' ? parseInt(newItemPrice) : 0,
         description: newItemDescription,
         stock: 0,
-        category: newItemType === 'flavor' ? newItemCategory : undefined,
-        optionGroups: newItemType === 'product' ? newItemOptionGroups : undefined
+      }
+      if (newItemType === 'flavor') {
+        item.category = newItemCategory
+      }
+      if (newItemType === 'product' && newItemOptionGroups.length > 0) {
+        item.optionGroups = newItemOptionGroups
       }
       await setDoc(doc(db, 'inventory', fullId), item)
       toast.success('Producto agregado con éxito')
