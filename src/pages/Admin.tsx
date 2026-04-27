@@ -58,6 +58,36 @@ export default function Admin() {
   const [editDescriptionValue, setEditDescriptionValue] = useState<string>('')
   const [editNameValue, setEditNameValue] = useState<string>('')
   const [editIconValue, setEditIconValue] = useState<string>('')
+  const [editCategoryValue, setEditCategoryValue] = useState<string>('')
+  const [editOptionGroupsValue, setEditOptionGroupsValue] = useState<{label: string, category: string}[]>([])
+
+  const addOptionGroup = (target: 'new' | 'edit') => {
+    if (target === 'new') {
+      setNewItemOptionGroups([...newItemOptionGroups, { label: '', category: '' }])
+    } else {
+      setEditOptionGroupsValue([...editOptionGroupsValue, { label: '', category: '' }])
+    }
+  }
+
+  const removeOptionGroup = (target: 'new' | 'edit', index: number) => {
+    if (target === 'new') {
+      setNewItemOptionGroups(newItemOptionGroups.filter((_, i) => i !== index))
+    } else {
+      setEditOptionGroupsValue(editOptionGroupsValue.filter((_, i) => i !== index))
+    }
+  }
+
+  const updateOptionGroup = (target: 'new' | 'edit', index: number, field: 'label' | 'category', value: string) => {
+    if (target === 'new') {
+      const updated = [...newItemOptionGroups]
+      updated[index] = { ...updated[index], [field]: value }
+      setNewItemOptionGroups(updated)
+    } else {
+      const updated = [...editOptionGroupsValue]
+      updated[index] = { ...updated[index], [field]: value }
+      setEditOptionGroupsValue(updated)
+    }
+  }
 
   const [visibleDays, setVisibleDays] = useState(5)
   const [storeName, setStoreName] = useState('Delicias Bakery')
@@ -76,6 +106,68 @@ export default function Admin() {
   const [newItemPrice, setNewItemPrice] = useState('15')
   const [newItemIcon, setNewItemIcon] = useState('🥜')
   const [newItemDescription, setNewItemDescription] = useState('')
+  const [newItemCategory, setNewItemCategory] = useState('muffin')
+  const [newItemOptionGroups, setNewItemOptionGroups] = useState<{label: string, category: string}[]>([])
+
+  const seedMojaditos = async () => {
+    const toastId = toast.loading('Configurando productos...')
+    try {
+      const batch = writeBatch(db)
+      
+      const items = [
+        // Productos Base
+        { 
+          id: 'product_muffin_base',
+          name: 'Muffins de Plátano', 
+          icon: '🍌', 
+          type: 'product', 
+          price: 15, 
+          description: 'Deliciosos muffins caseros. Elige un sabor por pieza.',
+          optionGroups: [{ label: 'Elige tu sabor', category: 'muffin' }]
+        },
+        { 
+          id: 'product_empanadas_gourmet',
+          name: 'Empanadas Gourmet', 
+          icon: '🥟', 
+          type: 'product', 
+          price: 20, 
+          description: 'Deliciosas empanadas gourmet con queso Philadelphia.',
+          optionGroups: [{ label: 'Elige tu sabor', category: 'empanada' }]
+        },
+        // Opciones Mojaditos
+        { name: 'Pan de Chocolate', icon: '🍫', type: 'flavor', category: 'mojadito_pan' },
+        { name: 'Pan de Vainilla', icon: '🍦', type: 'flavor', category: 'mojadito_pan' },
+        { name: 'Fresa', icon: '🍓', type: 'flavor', category: 'mojadito_topping' },
+        { name: 'Nuez', icon: '🥜', type: 'flavor', category: 'mojadito_topping' },
+        { name: 'Chocolate', icon: '🍫', type: 'flavor', category: 'mojadito_topping' },
+        { name: 'Chispas', icon: '✨', type: 'flavor', category: 'mojadito_topping' },
+        // Producto Mojaditos
+        {
+          name: 'Mojaditos (3 leches)',
+          icon: '🍰',
+          type: 'product',
+          price: 35,
+          description: 'Deliciosos pastelitos bañados en tres leches.',
+          optionGroups: [
+            { label: 'Elige el sabor de pan', category: 'mojadito_pan' },
+            { label: 'Elige tu topping', category: 'mojadito_topping' }
+          ]
+        }
+      ]
+
+      for (const itemData of items) {
+        const { id, ...data } = itemData as any
+        const ref = id ? doc(db, 'inventory', id) : doc(collection(db, 'inventory'))
+        batch.set(ref, data, { merge: true })
+      }
+
+      await batch.commit()
+      toast.success('¡Productos configurados!', { id: toastId })
+    } catch (e) {
+      console.error(e)
+      toast.error('Error al configurar datos', { id: toastId })
+    }
+  }
 
   // 1. Fetch password settings
   useEffect(() => {
@@ -453,7 +545,8 @@ export default function Admin() {
         price: newItemType === 'product' ? parseInt(newItemPrice) : 0,
         description: newItemDescription,
         stock: 0,
-        category: newItemType === 'flavor' ? 'muffin' : undefined // Default category for new flavors
+        category: newItemType === 'flavor' ? newItemCategory : undefined,
+        optionGroups: newItemType === 'product' ? newItemOptionGroups : undefined
       }
       await setDoc(doc(db, 'inventory', fullId), item)
       toast.success('Producto agregado con éxito')
@@ -776,6 +869,12 @@ export default function Admin() {
               <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem' }}>Guardar</button>
             </form>
           </div>
+          <div style={{ padding: '1.25rem', background: 'var(--bg-dark)', borderRadius: '12px', border: '1px solid var(--border-color)', width: '100%', maxWidth: '400px' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem', marginBottom: '1rem' }}>⚙️ Acciones Rápidas</h3>
+            <button onClick={seedMojaditos} className="add-btn" style={{ background: '#8b5cf6', width: '100%', padding: '0.8rem' }}>
+              Configurar Mojaditos Automáticamente
+            </button>
+          </div>
         </div>
       )}
 
@@ -998,242 +1097,277 @@ export default function Admin() {
             })()}
 
             {showNewItemForm && (
-              <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '1px solid var(--primary)' }}>
-                <div style={{ flex: '1 1 200px' }}>
-                  <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>NOMBRE</label>
-                  <input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Ej: Bolsa de cacahuates" style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} />
+              <div style={{ background: 'var(--bg-card)', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '1px solid var(--primary)' }}>
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 200px' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>NOMBRE</label>
+                    <input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Ej: Mojaditos" style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} />
+                  </div>
+                  <div style={{ flex: '1 1 120px' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>TIPO</label>
+                    <select value={newItemType} onChange={e => setNewItemType(e.target.value as any)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }}>
+                      <option value="product">Producto</option>
+                      <option value="flavor">Sabor / Opción</option>
+                    </select>
+                  </div>
+                  <div style={{ width: '60px' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>ICONO</label>
+                    <input type="text" value={newItemIcon} onChange={e => setNewItemIcon(e.target.value)} placeholder="🍫" style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', textAlign: 'center' }} />
+                  </div>
+                  {newItemType === 'product' && (
+                    <div style={{ width: '80px' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>PRECIO</label>
+                      <input type="number" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} />
+                    </div>
+                  )}
+                  {newItemType === 'flavor' && (
+                    <div style={{ flex: '1 1 150px' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>CATEGORÍA (ID)</label>
+                      <input type="text" value={newItemCategory} onChange={e => setNewItemCategory(e.target.value)} placeholder="muffin, galleta, mojadito_pan..." style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} />
+                    </div>
+                  )}
                 </div>
-              <div style={{ flex: '1 1 120px' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>TIPO</label>
-                <select value={newItemType} onChange={e => setNewItemType(e.target.value as any)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }}>
-                  <option value="product">Producto (Pay/Botana)</option>
-                  <option value="flavor">Sabor de Muffin</option>
-                </select>
-              </div>
-              <div style={{ width: '60px' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>ICONO</label>
-                <input type="text" value={newItemIcon} onChange={e => setNewItemIcon(e.target.value)} placeholder="🥜" style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white', textAlign: 'center' }} />
-              </div>
-              {newItemType === 'product' && (
-                <div style={{ width: '80px' }}>
-                  <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>PRECIO</label>
-                  <input type="number" value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)} style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} />
-                </div>
-              )}
-              <div style={{ flex: '1 1 200px' }}>
-                <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>DESCRIPCIÓN (Opcional)</label>
-                <input type="text" value={newItemDescription} onChange={e => setNewItemDescription(e.target.value)} placeholder="Ej: Contiene salsa" style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} />
-              </div>
-              <button onClick={addNewItem} className="add-btn" style={{ height: '42px', padding: '0 1.5rem' }}>Agregar</button>
-            </div>
-          )}
 
-          {[
-            { title: 'Sabores de Muffin', items: inventory.filter(i => i.type === 'flavor'), icon: <Info size={18} /> },
-            { title: 'Productos Directos', items: inventory.filter(i => i.type === 'product'), icon: <Package size={18} /> }
-          ].map((section) => section.items.length > 0 && (
-            <div key={section.title}>
-              <h3 className="inventory-section-title">{section.icon} {section.title}</h3>
-              <div className="inventory-grid">
-                {section.items.map((item) => (
-                  <div key={item.id} className="inventory-card" style={{ opacity: item.disabled ? 0.5 : 1, border: item.disabled ? '2px dashed #ef4444' : undefined }}>
-                    <div className="inventory-card-header">
-                      <div className="inventory-card-info">
-                        <div className="inventory-icon">{item.icon}</div>
-                        <div>
-                          <h4 className="inventory-name" style={{ textDecoration: item.disabled ? 'line-through' : 'none' }}>{item.name}</h4>
-                          <span className="inventory-type">
-                            {item.type === 'flavor' ? `Sabor (${item.category || 'sin categoría'})` : 'Producto'}
-                            {item.disabled && <span style={{ color: '#ef4444', marginLeft: '0.5rem', fontWeight: 600 }}>OCULTO</span>}
-                          </span>
-                        </div>
+                {newItemType === 'product' && (
+                  <div style={{ border: '1px solid var(--border-color)', padding: '1rem', borderRadius: '8px', background: 'var(--bg-dark)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary)' }}>GRUPOS DE OPCIONES (Ej: Sabor de pan, Topping)</span>
+                      <button onClick={() => addOptionGroup('new')} className="add-btn" style={{ padding: '0.25rem 0.5rem', fontSize: '0.7rem' }}><Plus size={14}/> Añadir Grupo</button>
+                    </div>
+                    {newItemOptionGroups.map((group, idx) => (
+                      <div key={idx} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                        <input type="text" value={group.label} onChange={e => updateOptionGroup('new', idx, 'label', e.target.value)} placeholder="Etiqueta (Ej: Elige tu pan)" style={{ flex: 1, padding: '0.4rem', borderRadius: '6px', border: '1px solid #444', background: '#222', color: 'white', fontSize: '0.8rem' }} />
+                        <input type="text" value={group.category} onChange={e => updateOptionGroup('new', idx, 'category', e.target.value)} placeholder="Categoría ID (Ej: mojadito_pan)" style={{ flex: 1, padding: '0.4rem', borderRadius: '6px', border: '1px solid #444', background: '#222', color: 'white', fontSize: '0.8rem' }} />
+                        <button onClick={() => removeOptionGroup('new', idx)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={16}/></button>
                       </div>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        {role === 'admin' && (
-                          <button 
-                            onClick={() => toggleItemDisabled(item.id, !!item.disabled)}
-                            style={{ 
-                              background: item.disabled ? '#ef4444' : '#22c55e',
-                              border: 'none',
-                              borderRadius: '6px',
-                              padding: '0.4rem 0.6rem',
-                              cursor: 'pointer',
-                              color: 'white',
-                              fontSize: '0.7rem',
-                              fontWeight: 600
-                            }}
-                            title={item.disabled ? 'Habilitar (mostrar en tienda)' : 'Deshabilitar (ocultar de tienda)'}
-                          >
-                            {item.disabled ? 'Habilitar' : 'Ocultar'}
-                          </button>
-                        )}
-                        {role === 'admin' && (
-                          <button 
-                            onClick={() => {
-                              if (editingInventoryId === item.id) {
-                                setEditingInventoryId(null)
-                              } else {
-                                setEditingInventoryId(item.id)
-                                setEditStockValue(item.stock.toString())
-                                setEditPriceValue((item.price || 0).toString())
-                                setEditDescriptionValue(item.description || '')
-                                setEditNameValue(item.name || '')
-                                setEditIconValue(item.icon || '')
-                              }
-                            }}
-                            className="adjust-btn"
-                            title="Editar detalles"
-                          >
-                            <Edit3 size={16} />
-                          </button>
-                        )}
+                    ))}
+                    {newItemOptionGroups.length === 0 && <p style={{ fontSize: '0.7rem', color: '#666', textAlign: 'center', margin: 0 }}>Este producto no requiere selecciones adicionales.</p>}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.4rem' }}>DESCRIPCIÓN</label>
+                    <input type="text" value={newItemDescription} onChange={e => setNewItemDescription(e.target.value)} placeholder="Ej: Deliciosos panecitos bañados..." style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-dark)', color: 'white' }} />
+                  </div>
+                  <button onClick={addNewItem} className="add-btn" style={{ height: '42px', padding: '0 2rem' }}>Agregar Producto</button>
+                </div>
+              </div>
+            )}
+
+            {(() => {
+              const products = inventory.filter(i => i.type === 'product');
+              const optionsByCategory: Record<string, any[]> = {};
+              inventory.filter(i => i.type === 'flavor').forEach(item => {
+                const cat = item.category || 'muffin';
+                if (!optionsByCategory[cat]) optionsByCategory[cat] = [];
+                optionsByCategory[cat].push(item);
+              });
+
+              const InventoryCard = ({ item }: { item: any }) => (
+                <div key={item.id} className="inventory-card" style={{ opacity: item.disabled ? 0.5 : 1, border: item.disabled ? '2px dashed #ef4444' : undefined }}>
+                  <div className="inventory-card-header">
+                    <div className="inventory-card-info">
+                      <div className="inventory-icon">{item.icon}</div>
+                      <div>
+                        <h4 className="inventory-name" style={{ textDecoration: item.disabled ? 'line-through' : 'none' }}>{item.name}</h4>
+                        <span className="inventory-type">
+                          {item.type === 'flavor' ? `Opción (${item.category || 'muffin'})` : 'Producto'}
+                          {item.disabled && <span style={{ color: '#ef4444', marginLeft: '0.5rem', fontWeight: 600 }}>OCULTO</span>}
+                        </span>
                       </div>
                     </div>
-
-                    <div className="stock-control">
-                      <div style={{ flex: 1 }}>
-                        <div className="stock-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>STOCK {formatDisplayDate(new Date(selectedInventoryDate + 'T12:00:00'))}</span>
-                          <button 
-                            onClick={() => toggleItemUnlimited(item.id)}
-                            style={{ 
-                              background: unlimitedItems.includes(item.id) ? 'var(--primary)' : 'transparent',
-                              border: '1px solid var(--border-color)',
-                              color: unlimitedItems.includes(item.id) ? 'white' : 'var(--text-muted)',
-                              fontSize: '0.65rem',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {unlimitedItems.includes(item.id) ? 'ILIMITADO' : 'MANUAL'}
-                          </button>
-                        </div>
-                        <div className="stock-value">
-                          {unlimitedItems.includes(item.id) ? (
-                            <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>∞ Ilimitado</span>
-                          ) : (
-                            <>
-                              {dailyInventory[item.id] || 0}
-                              <span className={`stock-badge ${(dailyInventory[item.id] || 0) <= 5 ? 'low' : 'healthy'}`}>
-                                {(dailyInventory[item.id] || 0) === 0 ? 'Agotado' : ((dailyInventory[item.id] || 0) <= 5 ? 'Bajo' : 'OK')}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {!unlimitedItems.includes(item.id) && (
-                        <div className="stock-adjusters">
-                          <button onClick={() => adjustStock(item.id, dailyInventory[item.id] || 0, -1)} className="adjust-btn"><Minus size={16} /></button>
-                          <button onClick={() => adjustStock(item.id, dailyInventory[item.id] || 0, 1)} className="adjust-btn"><Plus size={16} /></button>
-                        </div>
-                      )}
-                    </div>
-
-                    {editingInventoryId === item.id && (
-                      <div style={{ background: 'var(--bg-dark)', padding: '1rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                          <div style={{ flex: '1 1 80px', minWidth: '80px' }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>STOCK MANUAL</label>
-                            <input 
-                              type="number" 
-                              value={editStockValue} 
-                              onChange={e => setEditStockValue(e.target.value)}
-                              style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }}
-                            />
-                          </div>
-                          {role === 'admin' && item.type === 'product' && (
-                            <div style={{ flex: '1 1 80px', minWidth: '80px' }}>
-                              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>PRECIO $</label>
-                              <input 
-                                type="number" 
-                                value={editPriceValue} 
-                                onChange={e => setEditPriceValue(e.target.value)}
-                                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                        {role === 'admin' && (
-                          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                             <div style={{ flex: '1 1 150px' }}>
-                              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>NOMBRE</label>
-                              <input 
-                                type="text" 
-                                value={editNameValue} 
-                                onChange={e => setEditNameValue(e.target.value)}
-                                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }}
-                              />
-                            </div>
-                            <div style={{ width: '60px' }}>
-                              <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>ICONO</label>
-                              <input 
-                                type="text" 
-                                value={editIconValue} 
-                                onChange={e => setEditIconValue(e.target.value)}
-                                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white', textAlign: 'center' }}
-                              />
-                            </div>
-                          </div>
-                        )}
-                        {role === 'admin' && item.type === 'product' && (
-                          <div>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>DESCRIPCIÓN</label>
-                            <input 
-                              type="text" 
-                              value={editDescriptionValue} 
-                              onChange={e => setEditDescriptionValue(e.target.value)}
-                              placeholder="Ej: 2 por $15, incluye salsa, etc."
-                              style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }}
-                            />
-                          </div>
-                        )}
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {role === 'admin' && (
                         <button 
-                          onClick={async () => {
-                            // Actualizar stock en daily_inventory
-                            updateInventoryValue(item.id, 'stock', parseInt(editStockValue))
-                            
-                            if (role === 'admin') {
-                              try {
-                                await updateDoc(doc(db, 'inventory', item.id), {
-                                  name: editNameValue,
-                                  icon: editIconValue,
-                                  ...(item.type === 'product' ? { 
-                                    price: parseInt(editPriceValue),
-                                    description: editDescriptionValue 
-                                  } : {})
-                                })
-                                toast.success('Producto actualizado')
-                                setEditingInventoryId(null)
-                              } catch (e) {
-                                toast.error('Error al actualizar producto')
-                              }
+                          onClick={() => toggleItemDisabled(item.id, !!item.disabled)}
+                          style={{ 
+                            background: item.disabled ? '#ef4444' : '#22c55e',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '0.4rem 0.6rem',
+                            cursor: 'pointer',
+                            color: 'white',
+                            fontSize: '0.7rem',
+                            fontWeight: 600
+                          }}
+                        >
+                          {item.disabled ? 'Habilitar' : 'Ocultar'}
+                        </button>
+                      )}
+                      {role === 'admin' && (
+                        <button 
+                          onClick={() => {
+                            if (editingInventoryId === item.id) {
+                              setEditingInventoryId(null)
+                            } else {
+                              setEditingInventoryId(item.id)
+                              setEditStockValue((dailyInventory[item.id] || 0).toString())
+                              setEditPriceValue((item.price || 0).toString())
+                              setEditDescriptionValue(item.description || '')
+                              setEditNameValue(item.name || '')
+                              setEditIconValue(item.icon || '')
+                              setEditCategoryValue(item.category || '')
+                              setEditOptionGroupsValue(item.optionGroups || [])
                             }
                           }}
-                          className="add-btn" 
-                          style={{ width: '100%', padding: '0.5rem' }}
+                          className="adjust-btn"
                         >
-                          Guardar Cambios
+                          <Edit3 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="stock-control">
+                    <div style={{ flex: 1 }}>
+                      <div className="stock-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>STOCK {formatDisplayDate(new Date(selectedInventoryDate + 'T12:00:00'))}</span>
+                        <button 
+                          onClick={() => toggleItemUnlimited(item.id)}
+                          style={{ 
+                            background: unlimitedItems.includes(item.id) ? 'var(--primary)' : 'transparent',
+                            border: '1px solid var(--border-color)',
+                            color: unlimitedItems.includes(item.id) ? 'white' : 'var(--text-muted)',
+                            fontSize: '0.65rem',
+                            padding: '2px 6px',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          {unlimitedItems.includes(item.id) ? 'ILIMITADO' : 'MANUAL'}
                         </button>
                       </div>
-                    )}
-
-                    <div className="inventory-footer">
-                      <div>
-                        {role === 'admin' && item.price !== undefined ? (
-                          <span className="price-tag">${item.price}</span>
+                      <div className="stock-value">
+                        {unlimitedItems.includes(item.id) ? (
+                          <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>∞ Ilimitado</span>
                         ) : (
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                            {item.type === 'flavor' ? 'Muffin Base' : ''}
-                          </span>
+                          <>
+                            {dailyInventory[item.id] || 0}
+                            <span className={`stock-badge ${(dailyInventory[item.id] || 0) <= 5 ? 'low' : 'healthy'}`}>
+                              {(dailyInventory[item.id] || 0) === 0 ? 'Agotado' : ((dailyInventory[item.id] || 0) <= 5 ? 'Bajo' : 'OK')}
+                            </span>
+                          </>
                         )}
                       </div>
                     </div>
+                    {!unlimitedItems.includes(item.id) && (
+                      <div className="stock-adjusters">
+                        <button onClick={() => adjustStock(item.id, dailyInventory[item.id] || 0, -1)} className="adjust-btn"><Minus size={16} /></button>
+                        <button onClick={() => adjustStock(item.id, dailyInventory[item.id] || 0, 1)} className="adjust-btn"><Plus size={16} /></button>
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
+
+                  {editingInventoryId === item.id && (
+                    <div style={{ background: 'var(--bg-dark)', padding: '1rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        <div style={{ flex: '1 1 150px' }}>
+                          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>NOMBRE</label>
+                          <input type="text" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }} />
+                        </div>
+                        <div style={{ width: '60px' }}>
+                          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>ICONO</label>
+                          <input type="text" value={editIconValue} onChange={e => setEditIconValue(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white', textAlign: 'center' }} />
+                        </div>
+                      </div>
+
+                      {item.type === 'flavor' && (
+                        <div style={{ flex: '1 1 100%' }}>
+                          <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>CATEGORÍA ID</label>
+                          <input type="text" value={editCategoryValue} onChange={e => setEditCategoryValue(e.target.value)} placeholder="Ej: muffin, galleta, pan..." style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }} />
+                        </div>
+                      )}
+                      
+                      {item.type === 'product' && (
+                        <>
+                          <div style={{ flex: '1 1 80px' }}>
+                            <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>PRECIO $</label>
+                            <input type="number" value={editPriceValue} onChange={e => setEditPriceValue(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }} />
+                          </div>
+                          <div style={{ border: '1px solid #444', padding: '0.75rem', borderRadius: '8px', background: '#222' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--primary)' }}>GRUPOS DE OPCIONES</span>
+                              <button onClick={() => addOptionGroup('edit')} className="add-btn" style={{ padding: '2px 6px', fontSize: '0.6rem' }}><Plus size={12}/> Añadir</button>
+                            </div>
+                            {editOptionGroupsValue.map((group, idx) => (
+                              <div key={idx} style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.4rem', alignItems: 'center' }}>
+                                <input type="text" value={group.label} onChange={e => updateOptionGroup('edit', idx, 'label', e.target.value)} placeholder="Etiqueta" style={{ flex: 1, padding: '0.3rem', borderRadius: '4px', border: '1px solid #444', background: '#111', color: 'white', fontSize: '0.75rem' }} />
+                                <input type="text" value={group.category} onChange={e => updateOptionGroup('edit', idx, 'category', e.target.value)} placeholder="Cat ID" style={{ flex: 1, padding: '0.3rem', borderRadius: '4px', border: '1px solid #444', background: '#111', color: 'white', fontSize: '0.75rem' }} />
+                                <button onClick={() => removeOptionGroup('edit', idx)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={14}/></button>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      <div>
+                        <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.25rem' }}>DESCRIPCIÓN</label>
+                        <input type="text" value={editDescriptionValue} onChange={e => setEditDescriptionValue(e.target.value)} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'white' }} />
+                      </div>
+
+                      <button 
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'inventory', item.id), {
+                              name: editNameValue,
+                              icon: editIconValue,
+                              category: item.type === 'flavor' ? editCategoryValue : undefined,
+                              optionGroups: item.type === 'product' ? editOptionGroupsValue : undefined,
+                              ...(item.type === 'product' ? { 
+                                price: parseInt(editPriceValue),
+                                description: editDescriptionValue 
+                              } : {})
+                            })
+                            toast.success('Actualizado')
+                            setEditingInventoryId(null)
+                          } catch (e) {
+                            toast.error('Error')
+                          }
+                        }}
+                        className="add-btn" 
+                        style={{ width: '100%', padding: '0.5rem' }}
+                      >
+                        Guardar Cambios
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="inventory-footer">
+                    <div>
+                      {role === 'admin' && item.price !== undefined && item.type === 'product' ? (
+                        <span className="price-tag">${item.price}</span>
+                      ) : (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          {item.type === 'flavor' ? `Cat: ${item.category || 'muffin'}` : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+
+              return (
+                <>
+                  <h3 className="inventory-section-title"><Package size={18} /> Productos Directos</h3>
+                  <div className="inventory-grid">
+                    {products.map((item) => (
+                      <InventoryCard key={item.id} item={item} />
+                    ))}
+                  </div>
+
+                  {Object.entries(optionsByCategory).map(([cat, items]) => (
+                    <div key={cat}>
+                      <h3 className="inventory-section-title" style={{ textTransform: 'capitalize' }}><List size={18} /> Opciones: {cat.replace('_', ' ')}</h3>
+                      <div className="inventory-grid">
+                        {items.map((item) => (
+                          <InventoryCard key={item.id} item={item} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
           </div>
         </>
       ) : (
@@ -1296,7 +1430,16 @@ export default function Admin() {
               <ul style={{ margin: 0, paddingLeft: '1rem', fontSize: '0.9rem' }}>
                 {order.items.map((item, idx) => (
                   <li key={idx} style={{ marginBottom: '0.25rem' }}>
-                    {item.quantity}x {item.name} {item.flavorName ? `(${item.flavorName})` : ''}
+                    {item.quantity}x {item.name} 
+                    {item.options && item.options.length > 0 ? (
+                      <span style={{ fontSize: '0.8rem', color: '#666', marginLeft: '0.4rem' }}>
+                        ({item.options.map((o: any) => o.name).join(', ')})
+                      </span>
+                    ) : item.flavorName ? (
+                      <span style={{ fontSize: '0.8rem', color: '#666', marginLeft: '0.4rem' }}>
+                        ({item.flavorName})
+                      </span>
+                    ) : ''}
                   </li>
                 ))}
               </ul>

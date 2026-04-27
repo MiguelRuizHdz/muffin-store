@@ -7,24 +7,33 @@ import { AlertCircle } from 'lucide-react'
 import { getNextBusinessDays, formatDateId, formatDisplayDate } from '../utils/dates'
 
 
+interface SelectedOption {
+  id: string
+  name: string
+  icon: string
+  category: string
+}
+
+interface OptionGroup {
+  label: string
+  category: string
+}
+
 interface Product {
   id: string
   name: string
   icon: string
   price: number
   description: string
-  requiresFlavor: boolean
-  flavorCategory?: string
+  optionGroups?: OptionGroup[]
 }
 
 interface CartItem {
   id: string
   productId: string
-  inventoryId: string // Item to decrement stock from
   name: string
   icon: string
-  flavorName?: string
-  flavorIcon?: string
+  options: SelectedOption[]
   price: number
   quantity: number
 }
@@ -32,7 +41,7 @@ interface CartItem {
 export default function Store() {
   const [inventory, setInventory] = useState<any[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
-  const [selectedFlavor, setSelectedFlavor] = useState<string>('')
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, Record<string, string>>>({}) // { productId: { category: optionId } }
   
   const [visibleDays, setVisibleDays] = useState(5)
   const [availableDates, setAvailableDates] = useState<Date[]>(() => getNextBusinessDays(5))
@@ -129,45 +138,31 @@ export default function Store() {
   const empanadaBase = inventory.find(i => i.id === 'product_empanadas_gourmet')
   const empanadaBaseDisabled = empanadaBase?.disabled || false
   
-  const PRODUCTS: Product[] = [
-    // Solo mostrar muffins si el producto base no está deshabilitado y hay sabores disponibles
-    ...(!muffinBaseDisabled && ALL_FLAVORS.some(f => f.category === 'muffin') ? [{
-      id: 'muffin_platano',
-      name: muffinBase?.name || 'Muffins de plátano',
-      icon: muffinBase?.icon || '🍌',
-      price: muffinBase?.price || 15,
-      description: muffinBase?.description || 'Deliciosos muffins caseros. Elige un sabor por pieza.',
-      requiresFlavor: true,
-      flavorCategory: 'muffin'
-    }] : []),
-    // Solo mostrar empanadas si el producto base no está deshabilitado y hay sabores disponibles
-    ...(!empanadaBaseDisabled && ALL_FLAVORS.some(f => f.category === 'empanada') ? [{
-      id: 'empanadas_gourmet',
-      name: empanadaBase?.name || 'Empanadas Gourmet',
-      icon: empanadaBase?.icon || '🥟',
-      price: empanadaBase?.price || 20,
-      description: empanadaBase?.description || 'Deliciosas empanadas gourmet con queso Philadelphia.',
-      requiresFlavor: true,
-      flavorCategory: 'empanada'
-    }] : []),
-    ...inventory
-      .filter(i => i.type === 'product' && i.id !== 'product_muffin_base' && i.id !== 'product_empanadas_gourmet' && !i.disabled)
-      .sort((a, b) => {
-        // Orden específico: pays primero, luego cacahuates, luego resto
-        const priority = { 'product_mini_pays': 1, 'product_cacahuates': 2 }
-        const prioA = priority[a.id as keyof typeof priority] || 99
-        const prioB = priority[b.id as keyof typeof priority] || 99
-        return prioA - prioB
-      })
-      .map((i: any) => ({
+  const PRODUCTS: Product[] = inventory
+    .filter(i => i.type === 'product' && !i.disabled)
+    .sort((a, b) => {
+      const priority: Record<string, number> = { 'product_muffin_base': 1, 'product_empanadas_gourmet': 2, 'product_mini_pays': 3, 'product_mojaditos': 4 }
+      const prioA = priority[a.id] || 99
+      const prioB = priority[b.id] || 99
+      return prioA - prioB
+    })
+    .map((i: any) => {
+      // Compatibilidad con productos viejos que no tienen optionGroups configurados
+      let groups = i.optionGroups
+      if (!groups) {
+        if (i.id === 'product_muffin_base') groups = [{ label: 'Elige tu sabor', category: 'muffin' }]
+        else if (i.id === 'product_empanadas_gourmet') groups = [{ label: 'Elige tu sabor', category: 'empanada' }]
+      }
+      
+      return {
         id: i.id,
         name: i.name,
         icon: i.icon,
         price: i.price,
         description: i.description || '',
-        requiresFlavor: false
-      }))
-  ]
+        optionGroups: groups
+      }
+    })
   
   const getStock = (inventoryId: string) => {
     return dailyInventory[inventoryId] || 0
@@ -183,30 +178,58 @@ export default function Store() {
   const [orderId, setOrderId] = useState('')
 
   const handleAddToCart = (product: Product) => {
-    if (product.requiresFlavor && !selectedFlavor) {
-      toast.error('Por favor selecciona un sabor para tu muffin.')
-      return
+    const productOptions = selectedOptions[product.id] || {}
+    const requiredGroups = product.optionGroups || []
+    
+    // Verificar que todas las opciones requeridas estén seleccionadas
+    for (const group of requiredGroups) {
+      if (!productOptions[group.category]) {
+        toast.error(`Por favor selecciona: ${group.label}`)
+        return
+      }
     }
 
-    const flavor = ALL_FLAVORS.find(f => f.id === selectedFlavor)
-    const inventoryId = product.requiresFlavor ? selectedFlavor : product.id
-    const currentStock = getStock(inventoryId)
+    const selectedOptionsData: SelectedOption[] = requiredGroups.map(group => {
+      const optionId = productOptions[group.category]
+      const option = inventory.find(i => i.id === optionId)
+      return {
+        id: optionId,
+        name: option?.name || 'Sabor',
+        icon: option?.icon || '✨',
+        category: group.category
+      }
+    })
 
-    // Validar stock si no es ilimitado.
-    if (!isUnlimitedDay && currentStock <= 0) {
-      toast.error('Lo sentimos, este producto se ha agotado para este periodo.')
-      return
+    // Validar stock para cada opción y para el producto mismo
+    const itemsToCheck = [
+      ...(requiredGroups.length > 0 ? selectedOptionsData.map(o => o.id) : [product.id])
+    ]
+
+    if (!isUnlimitedDay) {
+      for (const invId of itemsToCheck) {
+        if (getStock(invId) <= 0 && !unlimitedItems.includes(invId)) {
+          const item = inventory.find(i => i.id === invId) || product
+          toast.error(`Lo sentimos, ${item.name} se ha agotado.`)
+          return
+        }
+      }
     }
 
-    const cartItemId = product.requiresFlavor ? `${product.id}-${selectedFlavor}` : product.id
+    const optionsKey = selectedOptionsData.map(o => o.id).sort().join('-')
+    const cartItemId = optionsKey ? `${product.id}-${optionsKey}` : product.id
 
     setCart(prev => {
       const existing = prev.find(item => item.id === cartItemId)
       if (existing) {
-        const currentStock = getStock(inventoryId)
-        if (!isUnlimitedDay && existing.quantity + 1 > currentStock) {
-          toast.error(`Solo quedan ${currentStock} disponibles.`)
-          return prev
+        // Validar stock acumulado
+        if (!isUnlimitedDay) {
+          for (const invId of itemsToCheck) {
+            if (!unlimitedItems.includes(invId) && existing.quantity + 1 > getStock(invId)) {
+              const item = inventory.find(i => i.id === invId) || product
+              toast.error(`Solo quedan ${getStock(invId)} de ${item.name} disponibles.`)
+              return prev
+            }
+          }
         }
         return prev.map(item =>
           item.id === cartItemId
@@ -218,38 +241,45 @@ export default function Store() {
       const newItem: CartItem = {
         id: cartItemId,
         productId: product.id,
-        inventoryId: inventoryId,
         name: product.name,
         icon: product.icon,
         price: product.price,
-        quantity: 1
-      }
-      if (flavor) {
-        newItem.flavorName = flavor.name
-        newItem.flavorIcon = flavor.icon
+        quantity: 1,
+        options: selectedOptionsData
       }
 
       toast.success(`Agregado: ${product.name}`)
       return [...prev, newItem]
     })
 
-    if (product.requiresFlavor) {
-      setSelectedFlavor('')
-    }
+    // Limpiar selecciones para este producto
+    setSelectedOptions(prev => {
+      const updated = { ...prev }
+      delete updated[product.id]
+      return updated
+    })
   }
 
   const updateQuantity = (id: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.id === id) {
-        const currentStock = getStock(item.inventoryId)
         const newQty = item.quantity + delta
+        if (newQty <= 0) return item
+
+        const itemsToCheck = item.options.length > 0 ? item.options.map(o => o.id) : [item.productId]
         
-        if (!isUnlimitedDay && delta > 0 && newQty > currentStock) {
-          toast.error(`Solo quedan ${currentStock} disponibles.`)
-          return item
+        if (!isUnlimitedDay && delta > 0) {
+          for (const invId of itemsToCheck) {
+            const available = getStock(invId)
+            if (!unlimitedItems.includes(invId) && newQty > available) {
+              const invItem = inventory.find(i => i.id === invId) || item
+              toast.error(`Solo quedan ${available} de ${invItem.name} disponibles.`)
+              return item
+            }
+          }
         }
         
-        return newQty > 0 ? { ...item, quantity: newQty } : item
+        return { ...item, quantity: newQty }
       }
       return item
     }))
@@ -297,21 +327,24 @@ export default function Store() {
 
         // Verificación de stock
         for (const item of cart) {
-          const available = currentStocks[item.inventoryId] || 0
-          const itemIsUnlimited = isUnlimited || unlimitedItemsList.includes(item.inventoryId)
+          const itemsToCheck = item.options.length > 0 ? item.options.map(o => o.id) : [item.productId]
           
-          if (!itemIsUnlimited && available < item.quantity) {
-            throw new Error(`¡Ups! Stock insuficiente para "${item.flavorName || item.name}". Solo quedan ${available}.`)
-          }
-          if (!itemIsUnlimited) {
-            newStocks[item.inventoryId] = available - item.quantity
+          for (const invId of itemsToCheck) {
+            const available = newStocks[invId] ?? (currentStocks[invId] || 0)
+            const itemIsUnlimited = isUnlimited || unlimitedItemsList.includes(invId)
+            
+            if (!itemIsUnlimited && available < item.quantity) {
+              const invItem = inventory.find(i => i.id === invId)
+              throw new Error(`¡Ups! Stock insuficiente para "${invItem?.name || item.name}". Solo quedan ${available}.`)
+            }
+            if (!itemIsUnlimited) {
+              newStocks[invId] = available - item.quantity
+            }
           }
         }
 
-        // Decrementar stock solo si no es ilimitado
-        if (!isUnlimited) {
-          transaction.update(dailyInventoryRef, { stocks: newStocks })
-        }
+        // Decrementar stock
+        transaction.set(dailyInventoryRef, { stocks: newStocks }, { merge: true })
 
         // Crear orden
         const shortId = Math.random().toString(36).substring(2, 6).toUpperCase() + '-' + Math.random().toString(36).substring(2, 6).toUpperCase()
@@ -431,47 +464,58 @@ export default function Store() {
             <p className="card-desc">{product.description}</p>
             
             <div className="controls">
-              {product.requiresFlavor && (
+              {product.optionGroups && product.optionGroups.map((group, idx) => (
                 <select 
+                  key={`${product.id}-${group.category}-${idx}`}
                   className="flavor-select"
-                  value={selectedFlavor}
-                  onChange={(e) => setSelectedFlavor(e.target.value)}
+                  value={selectedOptions[product.id]?.[group.category] || ''}
+                  onChange={(e) => {
+                    setSelectedOptions(prev => ({
+                      ...prev,
+                      [product.id]: {
+                        ...(prev[product.id] || {}),
+                        [group.category]: e.target.value
+                      }
+                    }))
+                  }}
+                  style={{ marginBottom: '0.5rem' }}
                 >
-                  <option value="" disabled>Selecciona un sabor...</option>
-                  {ALL_FLAVORS
-                    .filter(f => f.category === product.flavorCategory)
-                    .map(flavor => {
-                      const stock = getStock(flavor.id)
-                      const itemIsUnlimited = isUnlimitedDay || unlimitedItems.includes(flavor.id)
+                  <option value="" disabled>{group.label}...</option>
+                  {inventory
+                    .filter(i => i.type === 'flavor' && i.category === group.category && !i.disabled)
+                    .map(option => {
+                      const stock = getStock(option.id)
+                      const itemIsUnlimited = isUnlimitedDay || unlimitedItems.includes(option.id)
                       return (
-                        <option key={flavor.id} value={flavor.id} disabled={!itemIsUnlimited && stock <= 0}>
-                          {flavor.icon} {flavor.name} {!itemIsUnlimited ? (stock <= 0 ? '(AGOTADO)' : `(${stock} disponibles)`) : '(Ilimitado)'}
+                        <option key={option.id} value={option.id} disabled={!itemIsUnlimited && stock <= 0}>
+                          {option.icon} {option.name} {!itemIsUnlimited ? (stock <= 0 ? '(AGOTADO)' : `(${stock} disp.)`) : ''}
                         </option>
                       )
                     })}
                 </select>
-              )}
+              ))}
               
               {(() => {
-                const inventoryId = product.requiresFlavor ? selectedFlavor : product.id
-                const stock = getStock(inventoryId)
-                const itemIsUnlimited = isUnlimitedDay || (inventoryId !== "" && unlimitedItems.includes(inventoryId))
-                const isOutOfStock = !itemIsUnlimited && stock <= 0
+                const requiredGroups = product.optionGroups || []
+                
+                // Si no tiene opciones, checamos stock del producto base
+                const isOutOfStock = !isUnlimitedDay && !unlimitedItems.includes(product.id) && getStock(product.id) <= 0 && requiredGroups.length === 0
                 
                 return (
                   <>
-                    {!itemIsUnlimited && isOutOfStock && inventoryId !== "" && (
+                    {isOutOfStock && (
                       <div style={{ color: '#ef4444', fontSize: '0.85rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <AlertCircle size={14} /> Producto temporalmente agotado
+                        <AlertCircle size={14} /> Producto agotado hoy
                       </div>
                     )}
+                    
                     <button 
                       className="add-btn" 
                       onClick={() => handleAddToCart(product)}
-                      disabled={(product.requiresFlavor && !selectedFlavor) || (!isUnlimitedDay && !unlimitedItems.includes(inventoryId) && inventoryId !== "" && isOutOfStock)}
-                      style={{ opacity: !(isUnlimitedDay || unlimitedItems.includes(inventoryId)) && isOutOfStock && inventoryId !== "" ? 0.6 : 1 }}
+                      disabled={isOutOfStock}
+                      style={{ opacity: isOutOfStock ? 0.6 : 1 }}
                     >
-                      <span>{String.fromCodePoint(0x2795)}</span> {!(isUnlimitedDay || unlimitedItems.includes(inventoryId)) && isOutOfStock && inventoryId !== "" ? 'Agotado' : 'Agregar al carrito'}
+                      {isOutOfStock ? 'No disponible' : 'Agregar al carrito'}
                     </button>
                   </>
                 )
@@ -497,10 +541,12 @@ export default function Store() {
                     <span className="cart-item-name">
                       {item.icon} {item.name}
                     </span>
-                    {item.flavorName && (
-                      <span className="cart-item-flavor">
-                        Sabor: {item.flavorName} {item.flavorIcon}
-                      </span>
+                    {item.options && item.options.length > 0 && (
+                      <div className="cart-item-flavor">
+                        {item.options.map(opt => (
+                          <div key={opt.category}>{opt.name} {opt.icon}</div>
+                        ))}
+                      </div>
                     )}
                     <span className="cart-item-flavor" style={{ marginTop: '0.25rem', color: 'var(--primary)' }}>
                       ${item.price} c/u
