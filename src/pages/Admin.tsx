@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { Loader2, Settings, LogOut, CheckCircle, Clock, Package, DollarSign, Edit3, Camera, X, Trash2, Activity, BarChart2, List, MessageCircle, Plus, Minus, Info, Calendar, AlertCircle, RotateCcw } from 'lucide-react'
 import { Scanner } from '@yudiel/react-qr-scanner'
 import { getNextBusinessDays, formatDateId, formatDisplayDate } from '../utils/dates'
+import { useRef } from 'react'
 
 interface OrderItem {
   id: string
@@ -44,6 +45,8 @@ export default function Admin() {
   const [logs, setLogs] = useState<any[]>([])
   const [inventory, setInventory] = useState<any[]>([])
   const [activeTab, setActiveTab] = useState<'orders' | 'inventory'>('orders')
+  const knownOrderIds = useRef<Set<string>>(new Set())
+  const isFirstLoad = useRef(true)
   
   const [showSettings, setShowSettings] = useState(false)
   const [showActivity, setShowActivity] = useState(false)
@@ -169,6 +172,13 @@ export default function Admin() {
       toast.error('Error al configurar datos', { id: toastId })
     }
   }
+  
+  // 0. Notification permission request
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, [])
 
   // 1. Fetch password settings
   useEffect(() => {
@@ -230,6 +240,32 @@ export default function Admin() {
         id: doc.id,
         ...doc.data()
       })) as Order[]
+
+      // Logic for new order notifications
+      if (!isFirstLoad.current) {
+        ordersData.forEach(order => {
+          if (order.status === 'nuevo' && !knownOrderIds.current.has(order.id)) {
+            // Play notification sound
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')
+            audio.play().catch(e => console.log('Audio playback blocked'))
+            
+            // Show browser notification
+            if ("Notification" in window && Notification.permission === "granted") {
+              new Notification("🔔 ¡Nuevo Pedido!", {
+                body: `Pedido de ${order.customerName} por $${order.total}`,
+                icon: "/favicon.ico"
+              });
+            }
+            toast("🧁 ¡Nuevo pedido recibido!", { icon: '🔔', duration: 5000 })
+          }
+        })
+      }
+
+      // Update known IDs list
+      const currentIds = new Set(ordersData.map(o => o.id))
+      knownOrderIds.current = currentIds
+      isFirstLoad.current = false
+
       setOrders(ordersData)
     }, (error) => {
       console.error("Error listening to orders:", error)
