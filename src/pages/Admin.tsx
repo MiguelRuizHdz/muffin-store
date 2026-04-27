@@ -135,18 +135,19 @@ export default function Admin() {
           optionGroups: [{ label: 'Elige tu sabor', category: 'empanada' }]
         },
         // Opciones Mojaditos
-        { name: 'Pan de Chocolate', icon: '🍫', type: 'flavor', category: 'mojadito_pan' },
-        { name: 'Pan de Vainilla', icon: '🍦', type: 'flavor', category: 'mojadito_pan' },
-        { name: 'Fresa', icon: '🍓', type: 'flavor', category: 'mojadito_topping' },
-        { name: 'Nuez', icon: '🥜', type: 'flavor', category: 'mojadito_topping' },
-        { name: 'Chocolate', icon: '🍫', type: 'flavor', category: 'mojadito_topping' },
-        { name: 'Chispas', icon: '✨', type: 'flavor', category: 'mojadito_topping' },
+        { id: 'opt_pan_choc', name: 'Pan de Chocolate', icon: '🍫', type: 'flavor', category: 'mojadito_pan' },
+        { id: 'opt_pan_vain', name: 'Pan de Vainilla', icon: '🍦', type: 'flavor', category: 'mojadito_pan' },
+        { id: 'opt_top_fresa', name: 'Fresa', icon: '🍓', type: 'flavor', category: 'mojadito_topping' },
+        { id: 'opt_top_nuez', name: 'Nuez', icon: '🥜', type: 'flavor', category: 'mojadito_topping' },
+        { id: 'opt_top_choc', name: 'Chocolate', icon: '🍫', type: 'flavor', category: 'mojadito_topping' },
+        { id: 'opt_top_chis', name: 'Chispas', icon: '✨', type: 'flavor', category: 'mojadito_topping' },
         // Producto Mojaditos
         {
+          id: 'product_mojaditos',
           name: 'Mojaditos (3 leches)',
           icon: '🍰',
           type: 'product',
-          price: 35,
+          price: 60,
           description: 'Deliciosos pastelitos bañados en tres leches.',
           optionGroups: [
             { label: 'Elige el sabor de pan', category: 'mojadito_pan' },
