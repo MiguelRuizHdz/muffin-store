@@ -389,6 +389,7 @@ export default function Store() {
   return (
     <div className="app-container">
       <header>
+        <img src="/logo.png" alt={storeName} className="logo" />
         <h1>{storeName}</h1>
         <p>{storeSubtitle}</p>
       </header>
