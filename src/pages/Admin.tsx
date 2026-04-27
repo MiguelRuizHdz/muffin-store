@@ -175,13 +175,8 @@ export default function Admin() {
     }
   }
   
-  // 0. Notification permission request
-  useEffect(() => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  }, [])
-
+  // 0. Notification permission request - REMOVED AUTO REQUEST (must be user-triggered)
+  
   // 1. Fetch password settings
   useEffect(() => {
     const fetchSettings = async () => {
@@ -738,6 +733,22 @@ export default function Admin() {
                     />
                   </div>
                 </div>
+              </div>
+              <div style={{ marginTop: '0.75rem' }}>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    if ("Notification" in window) {
+                      Notification.requestPermission().then(permission => {
+                        if (permission === "granted") toast.success("¡Notificaciones activadas!");
+                        else toast.error("Permiso denegado");
+                      });
+                    }
+                  }}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--primary)', background: 'transparent', color: 'var(--primary)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  🔔 Permitir Notificaciones en este Navegador
+                </button>
               </div>
               <button type="submit" className="add-btn" style={{ padding: '0.6rem 1rem', marginTop: '1rem' }}>Guardar Cambios</button>
             </form>
