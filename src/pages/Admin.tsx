@@ -1294,20 +1294,25 @@ export default function Admin() {
                       <button 
                         onClick={async () => {
                           try {
-                            await updateDoc(doc(db, 'inventory', item.id), {
+                            const updateData: any = {
                               name: editNameValue,
-                              icon: editIconValue,
-                              category: item.type === 'flavor' ? editCategoryValue : undefined,
-                              optionGroups: item.type === 'product' ? editOptionGroupsValue : undefined,
-                              ...(item.type === 'product' ? { 
-                                price: parseInt(editPriceValue || "0"),
-                                description: editDescriptionValue 
-                              } : {})
-                            })
+                              icon: editIconValue
+                            }
+                            
+                            if (item.type === 'flavor') {
+                              updateData.category = editCategoryValue
+                            } else {
+                              updateData.price = parseInt(editPriceValue || "0")
+                              updateData.description = editDescriptionValue
+                              updateData.optionGroups = editOptionGroupsValue
+                            }
+
+                            await updateDoc(doc(db, 'inventory', item.id), updateData)
                             toast.success('Actualizado')
                             setEditingInventoryId(null)
                           } catch (e) {
-                            toast.error('Error')
+                            console.error("Error updating item:", e)
+                            toast.error('Error al guardar')
                           }
                         }}
                         className="add-btn" 
