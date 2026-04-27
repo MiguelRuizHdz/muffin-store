@@ -1202,6 +1202,30 @@ export default function Admin() {
                           <Edit3 size={16} />
                         </button>
                       )}
+                      {role === 'admin' && (
+                        <button 
+                          onClick={() => {
+                            if (window.confirm(`¿Seguro que quieres eliminar "${item.name}" permanentemente?`)) {
+                              deleteDoc(doc(db, 'inventory', item.id))
+                                .then(() => toast.success('Eliminado'))
+                                .catch(() => toast.error('Error al eliminar'))
+                            }
+                          }}
+                          style={{ 
+                            background: '#fee2e2',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '0.4rem 0.6rem',
+                            cursor: 'pointer',
+                            color: '#ef4444',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
