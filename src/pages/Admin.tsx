@@ -521,31 +521,31 @@ export default function Admin() {
 
   return (
     <div style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto', background: 'var(--bg-dark)', minHeight: '100vh' }}>
-      <header style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', background: 'var(--bg-card)', padding: '1rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <img src="/logo.png" alt="Logo" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--primary)' }} />
-          <h1 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--primary)' }}>Gestión de Pedidos</h1>
+      <header style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', background: 'var(--bg-card)', padding: '0.8rem 1.2rem', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <img src="/logo.png" alt="Logo" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--primary)' }} />
+          <h1 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--primary)', whiteSpace: 'nowrap' }}>Gestión de Pedidos</h1>
         </div>
         
-        <div style={{ flex: '1 1 300px', maxWidth: '500px', display: 'flex', gap: '0.5rem' }}>
+        <div style={{ flex: '1 1 auto', maxWidth: '350px', display: 'flex', gap: '0.5rem', minWidth: '180px' }}>
           <input 
             type="text" 
-            placeholder="Buscar por código (#A4F2) o nombre..." 
+            placeholder="Buscar..." 
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            style={{ width: '100%', padding: '0.6rem 1rem', borderRadius: '99px', border: '1px solid #ddd', fontSize: '0.95rem' }}
+            style={{ width: '100%', padding: '0.5rem 1rem', borderRadius: '99px', border: '1px solid #ddd', fontSize: '0.9rem' }}
           />
           <button 
             type="button" 
             onClick={() => setIsScanning(true)} 
-            style={{ padding: '0.6rem', borderRadius: '50%', border: 'none', background: 'var(--primary)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', height: '40px', flexShrink: 0 }}
-            title="Escanear QR con cámara"
+            style={{ padding: '0.5rem', borderRadius: '50%', border: 'none', background: 'var(--primary)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '34px', height: '34px', flexShrink: 0 }}
+            title="Escanear QR"
           >
-            <Camera size={18} />
+            <Camera size={16} />
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button 
             type="button" 
             onClick={() => setActiveTab(activeTab === 'orders' ? 'inventory' : 'orders')} 
