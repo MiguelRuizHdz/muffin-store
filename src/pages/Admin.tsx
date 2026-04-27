@@ -1151,7 +1151,7 @@ export default function Admin() {
                 optionsByCategory[cat].push(item);
               });
 
-              const InventoryCard = ({ item }: { item: any }) => (
+              const renderInventoryCard = (item: any) => (
                 <div key={item.id} className="inventory-card" style={{ opacity: item.disabled ? 0.5 : 1, border: item.disabled ? '2px dashed #ef4444' : undefined }}>
                   <div className="inventory-card-header">
                     <div className="inventory-card-info">
@@ -1300,7 +1300,7 @@ export default function Admin() {
                               category: item.type === 'flavor' ? editCategoryValue : undefined,
                               optionGroups: item.type === 'product' ? editOptionGroupsValue : undefined,
                               ...(item.type === 'product' ? { 
-                                price: parseInt(editPriceValue),
+                                price: parseInt(editPriceValue || "0"),
                                 description: editDescriptionValue 
                               } : {})
                             })
@@ -1336,18 +1336,14 @@ export default function Admin() {
                 <>
                   <h3 className="inventory-section-title"><Package size={18} /> Productos Directos</h3>
                   <div className="inventory-grid">
-                    {products.map((item) => (
-                      <InventoryCard key={item.id} item={item} />
-                    ))}
+                    {products.map((item) => renderInventoryCard(item))}
                   </div>
 
                   {Object.entries(optionsByCategory).map(([cat, items]) => (
                     <div key={cat}>
                       <h3 className="inventory-section-title" style={{ textTransform: 'capitalize' }}><List size={18} /> Opciones: {cat.replace('_', ' ')}</h3>
                       <div className="inventory-grid">
-                        {items.map((item) => (
-                          <InventoryCard key={item.id} item={item} />
-                        ))}
+                        {items.map((item) => renderInventoryCard(item))}
                       </div>
                     </div>
                   ))}
