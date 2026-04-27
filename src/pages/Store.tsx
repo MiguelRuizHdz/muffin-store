@@ -50,6 +50,7 @@ export default function Store() {
   const [unlimitedItems, setUnlimitedItems] = useState<string[]>([])
   const [isUnlimitedDay, setIsUnlimitedDay] = useState(false)
   const [closedDate, setClosedDate] = useState('')
+  const [storeName, setStoreName] = useState('Delicias Bakery')
   const [storeSubtitle, setStoreSubtitle] = useState('Los mejores postres caseros a tu alcance 🧁')
   const [telegramToken, setTelegramToken] = useState('')
   const [telegramChatId, setTelegramChatId] = useState('')
