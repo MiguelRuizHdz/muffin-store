@@ -247,7 +247,7 @@ export default function Admin() {
           if (order.status === 'nuevo' && !knownOrderIds.current.has(order.id)) {
             // Play notification sound
             const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')
-            audio.play().catch(e => console.log('Audio playback blocked'))
+            audio.play().catch(() => console.log('Audio playback blocked'))
             
             // Show browser notification
             if ("Notification" in window && Notification.permission === "granted") {
