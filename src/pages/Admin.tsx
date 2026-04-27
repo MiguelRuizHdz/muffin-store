@@ -12,6 +12,7 @@ interface OrderItem {
   icon: string
   flavorName?: string
   flavorIcon?: string
+  options?: any[]
   price: number
   quantity: number
 }
@@ -53,7 +54,6 @@ export default function Admin() {
   const [isScanning, setIsScanning] = useState(false)
 
   const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null)
-  const [editStockValue, setEditStockValue] = useState<string>('')
   const [editPriceValue, setEditPriceValue] = useState<string>('')
   const [editDescriptionValue, setEditDescriptionValue] = useState<string>('')
   const [editNameValue, setEditNameValue] = useState<string>('')
@@ -428,20 +428,6 @@ export default function Admin() {
     }
   }
 
-  const updateInventoryValue = async (id: string, field: 'stock' | 'price' | 'description' | 'name' | 'icon', value: number | string) => {
-    try {
-      if (field === 'stock') {
-        const newDaily = { ...dailyInventory, [id]: value }
-        await setDoc(doc(db, 'daily_inventory', selectedInventoryDate), { stocks: newDaily }, { merge: true })
-      } else {
-        await updateDoc(doc(db, 'inventory', id), { [field]: value })
-      }
-      toast.success('Inventario actualizado')
-      setEditingInventoryId(null)
-    } catch (e) {
-      toast.error('Error al actualizar')
-    }
-  }
 
   const adjustStock = async (id: string, current: number, delta: number) => {
     const newVal = Math.max(0, current + delta)
@@ -1203,7 +1189,6 @@ export default function Admin() {
                               setEditingInventoryId(null)
                             } else {
                               setEditingInventoryId(item.id)
-                              setEditStockValue((dailyInventory[item.id] || 0).toString())
                               setEditPriceValue((item.price || 0).toString())
                               setEditDescriptionValue(item.description || '')
                               setEditNameValue(item.name || '')

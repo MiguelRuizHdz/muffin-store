@@ -127,16 +127,6 @@ export default function Store() {
     setCart([])
   }
 
-  // Derived data - filtrar sabores deshabilitados
-  const ALL_FLAVORS = inventory.filter(i => i.type === 'flavor' && !i.disabled)
-  
-  // Base products - filtrar productos deshabilitados
-  // Verificar si el producto base de muffin está deshabilitado
-  const muffinBase = inventory.find(i => i.id === 'product_muffin_base')
-  const muffinBaseDisabled = muffinBase?.disabled || false
-
-  const empanadaBase = inventory.find(i => i.id === 'product_empanadas_gourmet')
-  const empanadaBaseDisabled = empanadaBase?.disabled || false
   
   const PRODUCTS: Product[] = inventory
     .filter(i => i.type === 'product' && !i.disabled)
